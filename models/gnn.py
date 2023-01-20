@@ -18,7 +18,7 @@ class GCNLayer():
   def __repr__(self):
     return f"GCN: W{'_' + self.name if self.name else ''} ({self.n_inputs}, {self.n_outputs})"
 
-  def forward(self, adj_matrix, node_feats, W=None):
+  def forward(self, adj_matrix, node_feats, W=None, b=None):
 
     if W is None:
       W = self.W
@@ -33,7 +33,8 @@ class GCNLayer():
 
     adj_matrix = D_mod_invroot @ adj_matrix @ D_mod_invroot
     node_feats = adj_matrix @ node_feats @ W
-
+    if b is not None:
+      node_feats += node_feats + b
     # node_feats = node_feats / n_neig
     if self.activation is not None:
       node_feats = self.activation(node_feats)
