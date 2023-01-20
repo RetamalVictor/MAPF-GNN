@@ -8,7 +8,7 @@ from gym import spaces
 from matplotlib import cm, colors
 
 class GraphEnv(gym.Env):
-    def __init__(self, nb_agents, board_size=10):
+    def __init__(self, nb_agents, board_size=10, sensing_range=6):
         super(GraphEnv, self).__init__()
 
         self.board_size = board_size
@@ -25,7 +25,7 @@ class GraphEnv(gym.Env):
         self.positionX = np.zeros((nb_agents, 1))
         self.positionY = np.zeros((nb_agents, 1))
         self.nb_agents = nb_agents
-        self.sensing_range = 6
+        self.sensing_range = sensing_range
         self.obs_shape = self.nb_agents * 4
         self.action_space = spaces.Discrete(5)
         self.observation_space = spaces.Box(
