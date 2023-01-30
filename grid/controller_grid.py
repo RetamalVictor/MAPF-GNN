@@ -4,22 +4,22 @@ sys.path.append(r'..\Extra')
 from pprint import pprint
 import numpy as np
 from models.gnn import GCNLayer
-from env_graph_grid import GraphEnv
+from env_graph_gridv1 import GraphEnv
 import time
 
 if __name__ == "__main__":
-    agents = 20
-    b_size = 100
-    sensing = (b_size / 3)
+    agents = 16
+    b_size = 16
+    sensing = (b_size / 4)
     activation = np.tanh
-    W1 = np.array([.99]).reshape((1,1))
-    W2 = np.array([1.01]).reshape((1,1))
+    W1 = np.array([.9999]).reshape((1,1))
+    W2 = np.array([1.00011]).reshape((1,1))
     env = GraphEnv(agents, board_size=b_size, sensing_range=sensing)
     gcn = GCNLayer(n_nodes=agents, in_features=1, out_features=1)
     # emb = np.random.uniform(0,2, size=(agents))
     emb = np.ones(agents).reshape((agents,1))
     obs = env.reset()
-    test = [500]
+    test = [200]
     for le in range(len(test)):
         obs = env.reset()
         start = time.time()

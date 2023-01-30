@@ -1,6 +1,6 @@
 from pprint import pprint
 import numpy as np
-from gnn import GCNLayer
+from models.gnn import GCNLayer
 
 from env_graph import GraphEnv
 import time
