@@ -20,7 +20,7 @@ class GoalWrapper:
 
 
 class GraphEnv(gym.Env):
-    def __init__(self, nb_agents, trayectories, board_size=10, sensing_range=6, pad=3, starting_positions=None):
+    def __init__(self, nb_agents, goal, board_size=10, sensing_range=6, pad=3, starting_positions=None):
         super(GraphEnv, self).__init__()
         """
         :starting_positions: np.array-> [nb_agents, positions]; positions == [X,Y]
@@ -29,7 +29,7 @@ class GraphEnv(gym.Env):
         """
 
         self.board_size = board_size
-        self.trayectories = trayectories
+        self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad
         self.starting_positions = starting_positions 
@@ -131,14 +131,34 @@ class GraphEnv(gym.Env):
     def _updateEmbedding(self, H):
       self.embedding = H
     
-    def preprocessObs(self):
-        posx = self.positionX + self.pad
-        posy = self.positionY + self.pad
-        map_padded = np.pad(self.board,(self.pad,self.pad))
-        FOV = np.zeros((self.nb_agents, (self.pad*2)-1,(self.pad*2)-1))
-        for agent in range(self.nb_agents):
-            FOV[agent, :, :] = map_padded[posx[agent]-2:posx[agent]+3,posy[agent]-2:posy[agent]+3]
+    def map_goal(self, agent):
+            
+        if self.goal[agent][0] <= self.posx[agent]+3 or self.goal[agent][0] >= self.posx[agent]-2:
+            goal_x = self.goal[agent][0]
+        elif self.goal[agent][0] <= self.posx[agent]+3:
+            goal_x = self.goal[agent][0] - 2
+        elif self.goal[agent][0] >= self.posx[agent]-2:
+            goal_x = self.goal[agent][0] + 3
 
+        if self.goal[agent][1] <= self.posy[agent]+3 or self.goal[agent][1] >= self.posy[agent]-2:
+            goal_y = self.goal[agent][1]
+        elif self.goal[agent][1] <= self.posy[agent]+3:
+            goal_y = self.goal[agent][1] - 2
+        elif self.goal[agent][1] >= self.posy[agent]-2:
+            goal_y = self.goal[agent][0] + 3
+        goal = np.clip(np.array([goal_x, goal_y]),0,5)
+        return goal[0], goal[1]
+                
+
+    def preprocessObs(self):
+        self.posx = self.positionX + self.pad
+        self.posy = self.positionY + self.pad
+        map_padded = np.pad(self.board,(self.pad,self.pad))
+        FOV = np.zeros((self.nb_agents, 2, (self.pad*2)-1,(self.pad*2)-1))
+        for agent in range(self.nb_agents):
+            FOV[agent, 0, :, :] = map_padded[self.posx[agent]-2:self.posx[agent]+3,self.posy[agent]-2:self.posy[agent]+3]
+            gx, gy = self.map_goal(agent=agent)
+            FOV[agent, 1, gx-3, gy-3] = 3
         return FOV
 
 
@@ -258,10 +278,11 @@ class GraphEnv(gym.Env):
         return f"Game Board:\n{self.board}"
 
 if __name__ == "__main__":
-    agents = 10
+    agents = 3
     board_size=16
     sensing = 4
-    env = GraphEnv(agents, board_size=board_size, sensing_range=sensing)
+    goals = np.array([[3,4],[6,2],[9,1]])
+    env = GraphEnv(agents, goal=goals, board_size=board_size, sensing_range=sensing)
     emb = np.ones(agents).reshape((agents,1))
     obs = env.reset()
     for i in range(100):

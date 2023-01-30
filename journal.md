@@ -26,6 +26,6 @@ I'll make a todo list for you:
             - With Everything will have LxBx...xN where L is the envs number and B is the B size
         }
     }
-    - Add the padding to the FOV numpy array [EASY]
+    - Add the padding to the FOV numpy array [EASY][DONE]
     - Find a way to implement obstacles into the mix [EASY]
     - For visuals, add the goal marker and the obstacles [EASY]
