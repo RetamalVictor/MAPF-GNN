@@ -17,10 +17,10 @@ I'll make a todo list for you:
 
     - Create training script
     {
-        - Case generator, without the OE for now.
-        - test CNN [MEDIUM]
+        - Case generator, without the OE for now.[DONE]
+        - test CNN [MEDIUM][DONE]
         - test GNN [MEDIUM]
-        - test MLP [MEDIUM]
+        - test MLP [MEDIUM][DONE]
         - Parallelize the envs [HARD]
         {
             - With Everything will have LxBx...xN where L is the envs number and B is the B size
@@ -29,3 +29,9 @@ I'll make a todo list for you:
     - Add the padding to the FOV numpy array [EASY][DONE]
     - Find a way to implement obstacles into the mix [EASY]
     - For visuals, add the goal marker and the obstacles [EASY]
+
+## 31/01
+
+Automatic data generation ready
+Also, the pipeline for cbs -> trayectory -> recordings is ready
+Now is time for the training script

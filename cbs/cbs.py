@@ -253,8 +253,9 @@ class HighLevelNode(object):
         return self.cost < other.cost
 
 class CBS(object):
-    def __init__(self, environment):
+    def __init__(self, environment, verbose=True):
         self.env = environment
+        self.verbose = verbose
         self.open_set = set()
         self.closed_set = set()
     def search(self):
@@ -269,11 +270,13 @@ class CBS(object):
         start.cost = self.env.compute_solution_cost(start.solution)
 
         self.open_set |= {start}
-        print("Initializing search")
+        if self.verbose:
+            print("Initializing search")
         count = 0
         while self.open_set:
-            if count%20 == 0:
-                print("Still searching")
+            if self.verbose:
+                if count%20 == 0:
+                    print("Still searching")
             count +=1
             P = min(self.open_set)
             self.open_set -= {P}
@@ -282,7 +285,8 @@ class CBS(object):
             self.env.constraint_dict = P.constraint_dict
             conflict_dict = self.env.get_first_conflict(P.solution)
             if not conflict_dict:
-                print("solution found")
+                if self.verbose:
+                    print("solution found")
 
                 return self.generate_plan(P.solution)
 

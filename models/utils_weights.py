@@ -4,7 +4,6 @@ A file for all models' weight initialization functions
 import torch
 from torch import nn
 import numpy as np
-import graphs
 import math
 
 
