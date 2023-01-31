@@ -20,7 +20,7 @@ class GoalWrapper:
 
 
 class GraphEnv(gym.Env):
-    def __init__(self, nb_agents, goal, board_size=10, sensing_range=6, pad=3, starting_positions=None):
+    def __init__(self, nb_agents, goal, board_size=10, sensing_range=6, pad=3, starting_positions=None, obstacles=None):
         super(GraphEnv, self).__init__()
         """
         :starting_positions: np.array-> [nb_agents, positions]; positions == [X,Y]
@@ -29,6 +29,7 @@ class GraphEnv(gym.Env):
         """
 
         self.board_size = board_size
+        self.obstacles = obstacles
         self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad

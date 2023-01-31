@@ -1,0 +1,22 @@
+channels: [32, 32, 16]
+strides: [1,1,1,1,1]
+
+last_convs: [400]
+encoder_dims: [64]
+encoder_layers: 1
+action_layers: 1
+
+map_shape: [5,5]
+num_agents: 2
+num_workers: 3
+batch_size: 64
+train:
+    root_dir: 'dataset\2_0_8'
+    mode: 'train'
+    max_time: 13
+    nb_agents: 2
+valid:
+    root_dir: 'dataset\2_0_8'
+    mode: 'valid'
+    max_time: 15
+    nb_agents: 2

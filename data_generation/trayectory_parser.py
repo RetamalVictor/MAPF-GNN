@@ -39,6 +39,24 @@ def parse_trayectories(schedule):
         j+=1
     return trayect, np.array(startings)
 
+def parse_traject(path):
+    cases = os.listdir(path)
+    print("Parsing trayectories")
+    for i in range(len(cases)):        
+        with open(os.path.join(path,fr"case_{i}\solution.yaml")) as states_file:
+            schedule = yaml.load(states_file, Loader=yaml.FullLoader)
+        
+        combined_schedule = {}
+        combined_schedule.update(schedule["schedule"])
+
+        t, s = parse_trayectories(combined_schedule)
+        np.save(os.path.join(path,fr"case_{i}\trajectory.npy"), t)
+        if i%25 == 0:
+            print(f"Trajectoty -- [{i}/{len(cases)}]")
+    print(f"Trayectoty -- [{i}/{len(cases)}]")
+
+
+
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
     # parser.add_argument("schedule",type=str, default=r".\test_2.yaml", help="schedule for agents")
@@ -47,17 +65,23 @@ if __name__ == "__main__":
 
     # with open(args.schedule) as states_file:
     #     schedule = yaml.load(states_file, Loader=yaml.FullLoader)
-    total = 100
-    for i in range(total):
-        path = fr"dataset\2_0_5\case_{i}"
+    path = fr"dataset\2_0_8\train"
+    cases=200
+    config = {}
+    parse_traject(path)
+
+
+    # total = 200
+    # for i in range(0,total):
+    #     path = fr"dataset\2_0_5\val\case_{i}"
         
-        with open(os.path.join(path,"solution.yaml")) as states_file:
-            schedule = yaml.load(states_file, Loader=yaml.FullLoader)
+    #     with open(os.path.join(path,"solution.yaml")) as states_file:
+    #         schedule = yaml.load(states_file, Loader=yaml.FullLoader)
         
-        combined_schedule = {}
-        combined_schedule.update(schedule["schedule"])
-        t, s = parse_trayectories(combined_schedule)
-        np.save(os.path.join(path,f"trajectory.npy"), t)
-        if i%25 == 0:
-            print(f"Trayectoty [{i}/{total}]")
-    print(f"Trayectoty [{i}/{total}]")
+    #     combined_schedule = {}
+    #     combined_schedule.update(schedule["schedule"])
+    #     t, s = parse_trayectories(combined_schedule)
+    #     np.save(os.path.join(path,f"trajectory.npy"), t)
+    #     if i%25 == 0:
+    #         print(f"Trajectoty [{i}/{total}]")
+    # print(f"Trayectoty [{i}/{total}]")

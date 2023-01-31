@@ -11,7 +11,7 @@ class GNNControl(nn.Module):
         self.S = None
         self.numAgents = self.config["num_agents"]
         self.map_shape = self.config["map_shape"]
-        
+        self.numActions = 5
         convW = [self.map_shape[0]]
         convH = [self.map_shape[1]]
 
@@ -32,30 +32,50 @@ class GNNControl(nn.Module):
         ############################################################
         # CNN
         ############################################################
+        self.ConvLayers = nn.Sequential(
+            nn.Conv2d(in_channels=2, out_channels=16, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(num_features=16),
+            nn.ReLU(inplace=True),
+            # nn.MaxPool2d(kernel_size=2),
+            nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1, bias=True),
+            nn.BatchNorm2d(num_features=32),
+            nn.ReLU(inplace=True),
+            # nn.MaxPool2d(kernel_size=2),
+        )
 
-        convl = []
-        numConv = len(numChannel) - 1
-        nFilterTaps = [3] * numConv
-        nPaddingSzie = [1] * numConv
-        for l in range(numConv):
-            convl.append(nn.Conv2d(in_channels=numChannel[l], out_channels=numChannel[l + 1],
-                                    kernel_size=nFilterTaps[l], stride=numStride[l], padding=nPaddingSzie[l],
-                                    bias=True))
-            convl.append(nn.BatchNorm2d(num_features=numChannel[l + 1]))
-            convl.append(nn.ReLU(inplace=True))
+        self.compressMLP = nn.Sequential(
+            nn.Linear(32 * 5 * 5, 128),
+            nn.ReLU(inplace=True)
+        )
 
-            W_tmp = int((convW[l] - nFilterTaps[l] + 2 * nPaddingSzie[l]) / numStride[l]) + 1
-            H_tmp = int((convH[l] - nFilterTaps[l] + 2 * nPaddingSzie[l]) / numStride[l]) + 1
-            # Adding maxpooling
-            if l % 2 == 0:
-                convl.append(nn.MaxPool2d(kernel_size=2))
-                W_tmp = int((W_tmp - nMaxPoolFilterTaps) / numMaxPoolStride) + 1
-                H_tmp = int((H_tmp - nMaxPoolFilterTaps) / numMaxPoolStride) + 1
-                # http://cs231n.github.io/convolutional-networks/
-            convW.append(W_tmp)
-            convH.append(H_tmp)
+        ############################################################
+        # CNN
+        ############################################################
 
-        self.ConvLayers = nn.Sequential(*convl)
+        # convl = []
+        # numConv = len(numChannel) - 1
+        # nFilterTaps = [3] * numConv
+        # nPaddingSzie = [1] * numConv
+        # for l in range(numConv):
+        #     convl.append(nn.Conv2d(in_channels=numChannel[l], out_channels=numChannel[l + 1],
+        #                             kernel_size=nFilterTaps[l], stride=numStride[l], padding=nPaddingSzie[l],
+        #                             bias=True))
+        #     convl.append(nn.BatchNorm2d(num_features=numChannel[l + 1]))
+        #     convl.append(nn.ReLU(inplace=True))
+
+        #     W_tmp = int((convW[l] - nFilterTaps[l] + 2 * nPaddingSzie[l]) / numStride[l]) + 1
+        #     H_tmp = int((convH[l] - nFilterTaps[l] + 2 * nPaddingSzie[l]) / numStride[l]) + 1
+        #     # Adding maxpooling
+        #     if l % 2 == 0:
+        #         # convl.append(nn.MaxPool2d(kernel_size=2))
+        #         convl.append(nn.MaxPool2d(kernel_size=1))
+        #         W_tmp = int((W_tmp - nMaxPoolFilterTaps) / numMaxPoolStride) + 1
+        #         H_tmp = int((H_tmp - nMaxPoolFilterTaps) / numMaxPoolStride) + 1
+        #         # http://cs231n.github.io/convolutional-networks/
+        #     convW.append(W_tmp)
+        #     convH.append(H_tmp)
+
+        # self.ConvLayers = nn.Sequential(*convl)
 
         numFeatureMap = numChannel[-1] * convW[-1] * convH[-1]
 
@@ -64,13 +84,13 @@ class GNNControl(nn.Module):
         ############################################################
         numCompressFeatures = [numFeatureMap] + numCompressFeatures
 
-        compressmlp = []
-        for l in range(dimCompressMLP):
-            compressmlp.append(
-                nn.Linear(in_features=numCompressFeatures[l], out_features=numCompressFeatures[l + 1], bias=True))
-            compressmlp.append(nn.ReLU(inplace=True))
+        # compressmlp = []
+        # for l in range(dimCompressMLP):
+        #     compressmlp.append(
+        #         nn.Linear(in_features=numCompressFeatures[l], out_features=numCompressFeatures[l + 1], bias=True))
+        #     compressmlp.append(nn.ReLU(inplace=True))
 
-        self.compressMLP = nn.Sequential(*compressmlp)
+        # self.compressMLP = nn.Sequential(*compressmlp)
 
         self.numFeatures2Share = numCompressFeatures[-1]
         #####################################################################
@@ -100,7 +120,7 @@ class GNNControl(nn.Module):
         extractFeatureMap = torch.zeros(B, self.numFeatures2Share, self.numAgents).to(self.config["device"])
         for id_agent in range(self.numAgents):
             input_currentAgent = inputTensor[:, id_agent]
-            featureMap = self.ConvLayers(input_currentAgent)
+            featureMap = self.ConvLayers(input_currentAgent) # B x C x W x H
             featureMapFlatten = featureMap.view(featureMap.size(0), -1)
             # extractFeatureMap[:, :, id_agent] = featureMapFlatten
             compressfeature = self.compressMLP(featureMapFlatten)
@@ -117,7 +137,7 @@ class GNNControl(nn.Module):
         # B x F x N - > B x G x N,
         # sharedFeature = self.GFL(extractFeatureMap)
 
-        action_predict = []
+        action_predict = torch.zeros(B, self.numAgents, self.numActions).to(self.config["device"])
         for id_agent in range(self.numAgents):
             # DCP_nonGCN
             # sharedFeature_currentAgent = extractFeatureMap[:, :, id_agent]
@@ -130,7 +150,7 @@ class GNNControl(nn.Module):
 
             sharedFeatureFlatten = sharedFeature_currentAgent.view(sharedFeature_currentAgent.size(0), -1)
             action_currentAgents = self.actionsMLP(sharedFeatureFlatten) # 1 x 5
-            action_predict.append(action_currentAgents) # N x 5
+            action_predict[:, id_agent, :] = action_currentAgents # N x 5
         return action_predict
 
 if __name__ == "__main__":
@@ -141,16 +161,16 @@ if __name__ == "__main__":
     }
     model = GNNControl(config)
     print(model)
-    B=2
-    C=2
-    M=10
-    N=3
-    X = torch.randn(3, 2, 10, 10).unsqueeze(0)
-    # X = torch.from_numpy(X).float().unsqueeze(0)
-    print(X.shape)
-    x_t = model.forward(X)
-    print(x_t)
-    fun_soft = nn.LogSoftmax(dim=-1)
-    action = fun_soft(x_t[1])
-    actionKey_predict = torch.max(action, 1)[1]
-    print(actionKey_predict)
+    # B=2
+    # C=2
+    # M=10
+    # N=3
+    # X = torch.randn(3, 2, 10, 10).unsqueeze(0)
+    # # X = torch.from_numpy(X).float().unsqueeze(0)
+    # print(X.shape)
+    # x_t = model.forward(X)
+    # print(x_t)
+    # fun_soft = nn.LogSoftmax(dim=-1)
+    # action = fun_soft(x_t[1])
+    # actionKey_predict = torch.max(action, 1)[1]
+    # print(actionKey_predict)
