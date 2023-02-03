@@ -282,7 +282,7 @@ class GraphEnv(gym.Env):
         plt.plot([-1,-1,],[self.board_size, -1], color="black")
         plt.plot([-1,self.board_size],[self.board_size, self.board_size], color="black")
         plt.plot([self.board_size, self.board_size],[self.board_size,-1], color="black")
-        plt.pause(0.5)
+        plt.pause(0.1)
         plt.clf()
         plt.axis('off')
 
@@ -326,6 +326,17 @@ class GraphEnv(gym.Env):
                 self.positionY[int(ck[hash])] = self.positionY_temp[int(ck[hash])]
                 continue
             ck[hash] = i
+
+    def check_collision_obstacle(self):
+        ck = {str(self.obstacles[i][0],self.obstacles[i][1]):i for i in range(len(self.obstacles))}
+        for i in range(len(self.positionX)):
+            hash = str((self.positionX[i],self.positionY[i]))
+            if hash in ck:
+                self.positionX[i] = self.positionX_temp[i]
+                self.positionY[i] = self.positionY_temp[i]
+            
+
+
 
     def printBoard(self):
         self.updateBoard()
