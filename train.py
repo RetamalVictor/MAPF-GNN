@@ -12,7 +12,7 @@ import torch
 from torch import nn
 from torch import optim
 
-from grid.env_graph_gridv1 import GraphEnv
+from grid.env_graph_gridv1 import GraphEnv, create_goals
 from models.framework import Network
 from data_loader import GNNDataLoader
 
@@ -22,7 +22,9 @@ if not os.path.exists(r"results\2_0_8"):
 
 with open("config_1.yaml", 'r') as config_path:
     config = yaml.load(config_path, Loader=yaml.FullLoader)
-writer = SummaryWriter(r"results\2_0_8")
+
+exp_name = config["exp_name"]
+writer = SummaryWriter(fr"results\2_0_8{exp_name}")
 
 config["device"] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
@@ -33,10 +35,13 @@ if __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=3e-4)
     criterion = nn.CrossEntropyLoss()
     model.to(config["device"])
+    tests_episodes = config["tests_episodes"]
     
-    for epoch in range(100):
+    for epoch in range(config["epochs"]):
         print(f"Epoch {epoch}")
 
+
+        ######## Training #########
         model.train()
         train_loss = 0
         for i, (states, trajectories) in enumerate(data_loader.train_loader):
@@ -56,23 +61,34 @@ if __name__ == "__main__":
             optimizer.step()
         print(f"Loss: {train_loss.item()}")
         writer.add_scalar('Loss/train', train_loss.item(), epoch)
-        # print(f"Loss: {train_loss/len(data_loader.train_loader)}")
-        # writer.add_scalar('Loss/train', train_loss/len(data_loader.train_loader), epoch)
         
+
+        ######### Validation #########
         val_loss = 0
         model.eval()
-        for i, (states, trajectories) in enumerate(data_loader.valid_loader):
-            states = states.to(config["device"])
-            trajectories = trajectories.float().to(config["device"])
-            with torch.no_grad():
-              output = model(states)
-              total_loss = 0
-              for agent in range(trajectories.shape[1]):
-                  loss = criterion(output[:,agent,:].float(), trajectories[:,agent].long())
-                  total_loss += (loss.item()/trajectories.shape[1])
-              val_loss += total_loss
-        print(f"Val loss: {val_loss}")
-        writer.add_scalar('Loss/val', val_loss, epoch)
+        for episode in range(tests_episodes):
+            goals = create_goals(config["board_size"], config["num_agents"])
+            env = GraphEnv(config, goals)
+            emb = env.getEmbedding()
+            obs = env.reset()
+            for i in range(config["max_steps"]):
+                obs = torch.tensor(obs["fov"]).float().unsqueeze(0).to(config["device"])
+                with torch.no_grad():
+                    action = model(obs)
+                action = action.cpu().squeeze(0).numpy()
+                action = np.argmax(action, axis=1)
+                obs, reward, done, info = env.step(action, emb)
+                env.render()
+                if done:
+                    break
+            
+            metrics = env.computeMetrics()
+            writer.add_scalar('Metrics/success_rate', metrics[0], episode)
+            writer.add_scalar('Metrics/flow_time', metrics[1], episode)
+
+
+
+############# New validation
         # print(f"Val loss: {val_loss/len(data_loader.valid_loader)}")
         # writer.add_scalar('Loss/val', val_loss/len(data_loader.valid_loader), epoch)
         

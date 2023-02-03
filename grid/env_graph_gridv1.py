@@ -1,7 +1,6 @@
 from copy import copy
 from pprint import pprint
 import numpy as np
-import networkx as nx
 import matplotlib.pyplot as plt
 from scipy.linalg import sqrtm
 from scipy.special import softmax
@@ -20,16 +19,17 @@ class GoalWrapper:
 
 
 class GraphEnv(gym.Env):
-    def __init__(self, nb_agents, goal, board_size=10, sensing_range=6, pad=3, starting_positions=None, obstacles=None):
+    def __init__(self, config,  goal, max_time=23, board_size=10, sensing_range=6, pad=3, starting_positions=None, obstacles=None):
         super(GraphEnv, self).__init__()
         """
         :starting_positions: np.array-> [nb_agents, positions]; positions == [X,Y]
                             [[0,0],
                              [1,1]]
         """
-
-        self.board_size = board_size
-        self.obstacles = obstacles
+        self.config = config
+        self.max_time = self.config["max_time"]
+        self.board_size = self.config["board_size"][0]
+        self.obstacles = self.config["obstacles"]
         self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -41,7 +41,7 @@ class GraphEnv(gym.Env):
             4:(0,-1), # Down
             0:(0,0)  # Idle
         }
-
+        nb_agents = self.config["num_agents"]
         self.positionX = np.zeros((nb_agents, 1), dtype=np.int32)
         self.positionY = np.zeros((nb_agents, 1), dtype=np.int32)
         self.nb_agents = nb_agents
@@ -51,12 +51,11 @@ class GraphEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-15, high=15, shape=((self.obs_shape,)), dtype=np.float32
         )
-        self.graph = nx.Graph()
         self.headings = None
         self.embedding = np.ones(self.nb_agents)
         norm = colors.Normalize(vmin=0.0, vmax=1.4, clip=True)
         self.mapper  =  cm.ScalarMappable(norm=norm, cmap=cm.inferno)
-
+        self.time = 0
         _ = self.reset()
 
     def reset(self):
@@ -73,6 +72,7 @@ class GraphEnv(gym.Env):
         # self.positionY = np.random.uniform(-2.0, 4.0, size=(self.nb_agents))
         self.headings = np.random.uniform(-3.14, 3.14, size=(self.nb_agents))
         self.embedding = np.ones(self.nb_agents).reshape((self.nb_agents,1))
+        self.reached_goal = np.zeros(self.nb_agents)
         self._computeDistance()
         return self.getObservations()
 
@@ -92,6 +92,33 @@ class GraphEnv(gym.Env):
         self.adj_matrix = self._computeClosest(D_ij)
         self.adj_matrix[self.adj_matrix != 0] = 1
 
+    def computeMetrics(self):
+        last_state = np.array([self.positionX, self.positionY]).T
+
+        success = np.where(last_state == self.goal)
+        success_rate = len(success[0]) / self.nb_agents
+
+        flow_time = self.computeFlowTime()
+
+        return success_rate, flow_time
+
+    def checkAllInGoal(self):
+        last_state = np.array([self.positionX, self.positionY]).T
+        success = np.where(last_state == self.goal)
+        return len(success[0]) == self.nb_agents
+
+    def check_goals(self):
+        self.positionX = np.where(self.positionX_temp == self.goal[0],self.goal[0], self.positionX)
+        self.positiony = np.where(self.positionY_temp == self.goal[1],self.goal[1], self.positionY)
+
+
+    def computeFlowTime(self):
+        if self.checkAllInGoal():
+            return self.time
+        else:
+            return self.nb_agents * self.max_time
+
+
     @staticmethod
     def _computeClosest(A):
         for i in range(len(A)):
@@ -108,11 +135,14 @@ class GraphEnv(gym.Env):
           vy[list], shape(nb_agents)
         }
         """
+        done = False
         self._updateEmbedding(emb)
         self._updatePositions(actions)
         self._computeDistance()
         obs = self.getObservations()
-        return obs, {}, {}, {}
+        if self.checkAllInGoal():
+          done = True
+        return obs, {}, done, {}
 
     def _updatePositions(self, actions):
 
@@ -122,6 +152,7 @@ class GraphEnv(gym.Env):
         self.positionY_temp = copy(self.positionY)
         self.positionX += action_x
         self.positionY += action_y
+        self.check_goals()
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
@@ -176,9 +207,10 @@ class GraphEnv(gym.Env):
         }
         return obs
 
-    def render(self, agentId=None, printNeigh=False, mode="plot"):
+    def render(self, agentId=0, printNeigh=False, mode="plot"):
         
         plt.axis('off')
+        plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="*")
         if agentId is not None:
             column = np.where(self.adj_matrix[agentId])
             column = column[0]
@@ -244,6 +276,9 @@ class GraphEnv(gym.Env):
     def getGraph(self):
         return self.adj_matrix
 
+    def getEmbedding(self):
+        return copy(self.embedding)
+
     def getPositions(self):
         return self.positionX, self.positionY
     
@@ -277,6 +312,15 @@ class GraphEnv(gym.Env):
     def printBoard(self):
         self.updateBoard()
         return f"Game Board:\n{self.board}"
+
+########## utils ##########
+def create_goals(board_size, num_agents):
+    avilable_pos = np.arange(board_size[0])
+    goals_x = np.random.choice(avilable_pos, size=num_agents,replace=False)
+    goals_y = np.random.choice(avilable_pos, size=num_agents,replace=False)
+    goals = np.array([goals_x, goals_y]).T
+    return goals
+
 
 if __name__ == "__main__":
     agents = 3

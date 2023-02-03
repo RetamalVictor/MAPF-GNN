@@ -1,3 +1,5 @@
+exp_name: 'test1'
+
 channels: [32, 32, 16]
 strides: [1,1,1,1,1]
 
@@ -6,8 +8,16 @@ encoder_dims: [64]
 encoder_layers: 1
 action_layers: 1
 
+max_time: 17
+tests_episodes: 10
+epochs: 100
+max_steps: 25
+
+board_size: [8,8]
 map_shape: [5,5]
 num_agents: 2
+obstacles: 0
+
 num_workers: 3
 batch_size: 64
 train:

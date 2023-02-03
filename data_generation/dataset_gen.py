@@ -132,7 +132,7 @@ def create_solutions(path, num_cases, config):
 
 
 if __name__ == "__main__":
-    path = fr"dataset\4_3_8\train"
+    path = fr"dataset\4_3_8v2\train"
     config = {
         "device":"cpu",
         "num_agents":3,
@@ -142,7 +142,7 @@ if __name__ == "__main__":
         "nb_obstacles": 3
         }
     create_solutions(path, 2000, config)
-    path = fr"dataset\4_3_8\val"
+    path = fr"dataset\4_3_8v2\val"
     config = {
         "device":"cpu",
         "num_agents":3,
