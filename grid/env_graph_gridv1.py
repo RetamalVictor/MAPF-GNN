@@ -30,7 +30,7 @@ class GraphEnv(gym.Env):
         self.max_time = self.config["max_time"]
         self.min_time = self.config["min_time"]
         self.board_size = self.config["board_size"][0]
-        # self.obstacles = self.config["obstacles"]
+        self.obstacles = obstacles
         self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -62,13 +62,21 @@ class GraphEnv(gym.Env):
     def reset(self):
         self.time = 0
         self.avilable_pos = np.arange(self.board_size)
+        self.board =  np.zeros((self.board_size, self.board_size))
+        self.board[self.obstacles[:,1], self.obstacles[:,0]] = 2
         if self.starting_positions is not None:
             assert self.starting_positions.shape[0] == self.nb_agents, f"Agents and positions are not equal"
             self.positionX = self.starting_positions[:,0]
             self.positionY = self.starting_positions[:,1]
         else:
-            self.positionX = np.random.choice(self.avilable_pos, size=(self.nb_agents))
-            self.positionY = np.random.choice(self.avilable_pos, size=(self.nb_agents))
+            self.avilable_pos_x = np.arange(self.board_size)
+            self.avilable_pos_y = np.arange(self.board_size)
+            mask_x = np.isin(self.avilable_pos_x, self.obstacles[:,0])
+            mask_y = np.isin(self.avilable_pos_y, self.obstacles[:,1])
+            self.avilable_pos_x = self.avilable_pos_x[~mask_x]
+            self.avilable_pos_y = self.avilable_pos_y[~mask_y]
+            self.positionX = np.random.choice(self.avilable_pos_x, size=(self.nb_agents))
+            self.positionY = np.random.choice(self.avilable_pos_y, size=(self.nb_agents))
 
         self.goal_paded = self.goal + self.pad
 
@@ -160,6 +168,7 @@ class GraphEnv(gym.Env):
         self.positionX += action_x
         self.positionY += action_y
         self.check_goals()
+        self.check_collision_obstacle()
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
@@ -266,7 +275,8 @@ class GraphEnv(gym.Env):
 
         if mode == "plot":   
             plt.scatter(self.positionX, self.positionY, s=150, color=self.mapper.to_rgba(self.embedding))
-            plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="X")
+            plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="*", s=150)
+            plt.scatter(self.obstacles[:, 0], self.obstacles[:, 1], color="black", marker="s", s=150)
         if mode == "photo":
             plt.imshow(self.board, cmap="Greys")
 
@@ -328,7 +338,7 @@ class GraphEnv(gym.Env):
             ck[hash] = i
 
     def check_collision_obstacle(self):
-        ck = {str(self.obstacles[i][0],self.obstacles[i][1]):i for i in range(len(self.obstacles))}
+        ck = {str((self.obstacles[i][0],self.obstacles[i][1])):i for i in range(len(self.obstacles))}
         for i in range(len(self.positionX)):
             hash = str((self.positionX[i],self.positionY[i]))
             if hash in ck:
@@ -363,13 +373,14 @@ if __name__ == "__main__":
     sensing = 4
     start = np.array([[6,6], [3,3]])
     goals = np.array([[4,3], [7,7]])
-    env = GraphEnv(config, goal=goals, board_size=board_size, sensing_range=sensing, starting_positions=start)
+    obstacles = np.array([[2,2],[2,3]])
+    env = GraphEnv(config, goal=goals, board_size=board_size, sensing_range=sensing, starting_positions=start, obstacles=obstacles)
     emb = np.ones(agents).reshape((agents,1))
     obs = env.reset()
     actions = np.zeros((7,agents))
     plt.ion()
-    actions[:,0] = np.array([4,3,4,3,4,4,4]).T
-    actions[:,1] = np.zeros(7).T
+    actions[:,0] = np.array([4,4,4,3,3,3,3]).T
+    actions[:,1] = np.array([0,0,0,3,4,4,4]).T
     for i in range(7):
         """
             1:(1,0), # Right

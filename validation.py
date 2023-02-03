@@ -6,6 +6,7 @@ sys.path.append(r"C:\Users\victo\Desktop\VU master\MLGP\Extra")
 sys.path.append(r"C:\Users\victo\Desktop\VU master\MLGP\Extra\models")
 
 from grid.env_graph_gridv1 import GraphEnv, create_goals
+from data_generation.record import make_env
 import torch
 from models.framework import Network
 from torch import nn
@@ -43,6 +44,7 @@ for episode in range(tests_episodes):
             action = model(obs)
             action = action.cpu().squeeze(0).numpy()
         action = np.argmax(action, axis=1)
+        # action = np.random.randint(0,4,size=(config["num_agents"]))
         # pprint(action)
         obs, reward, done, info = env.step(action, emb)
         env.render()

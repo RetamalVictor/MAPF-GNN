@@ -56,7 +56,6 @@ def parse_traject(path):
     print(f"Trayectoty -- [{i}/{len(cases)}]")
 
 
-
 if __name__ == "__main__":
     # parser = argparse.ArgumentParser()
     # parser.add_argument("schedule",type=str, default=r".\test_2.yaml", help="schedule for agents")
@@ -65,7 +64,7 @@ if __name__ == "__main__":
 
     # with open(args.schedule) as states_file:
     #     schedule = yaml.load(states_file, Loader=yaml.FullLoader)
-    path = fr"dataset\2_0_8\train"
+    path = fr"dataset\obs_test"
     cases=200
     config = {}
     parse_traject(path)

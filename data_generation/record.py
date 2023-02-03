@@ -17,11 +17,14 @@ def make_env(pwd_path):
         "num_agents":nb_agents,
         "board_size":dimensions,
         "max_time":23,
-        "min_time":16
+        "min_time":1
     }
     starting_pos = np.zeros((nb_agents,2), dtype=np.int32)
     goals = np.zeros((nb_agents,2), dtype=np.int32)
-    
+    obstacles_list = np.zeros((len(obstacles),2), dtype=np.int32) 
+    for i in range(len(obstacles)):
+        obstacles_list[i,:] = np.array([int(obstacles[i][0]), int(obstacles[i][1])])
+
 
     for d, i in zip(params["agents"], range(0, nb_agents)):
     #   name = d["name"]
@@ -32,7 +35,8 @@ def make_env(pwd_path):
         config=config,
         goal=goals,
         board_size=int(dimensions[0]),
-        starting_positions=starting_pos
+        starting_positions=starting_pos,
+        obstacles=obstacles_list
         )
     return env
 
@@ -86,5 +90,5 @@ def record_env(path):
 if __name__ == "__main__":
     
     # total=200
-    pwd_path = fr"dataset\5_0_12v2\train"
+    pwd_path = fr"dataset\obs_test"
     record_env(pwd_path)
