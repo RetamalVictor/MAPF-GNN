@@ -73,7 +73,7 @@ def gen_input(dimensions: tuple[int,int], nb_obs:int, nb_agents:int) -> dict:
     for obstacle in range(nb_obs):
         obstacle = assign_obstacle(obstacles)
         obstacles.append(obstacle)
-        input_dict["map"]["obstacles"].append(obstacle)
+        input_dict["map"]["obstacles"].append(tuple(obstacle))
 
     for agent in range(nb_agents):
         start = assign_start(starts,obstacles)
@@ -132,26 +132,18 @@ def create_solutions(path, num_cases, config):
 
 
 if __name__ == "__main__":
-    path = fr"dataset\4_3_8v2\train"
+
+    path = fr"dataset\obs_test"
     config = {
         "device":"cpu",
         "num_agents":3,
         "map_shape":[8,8],
         "root_dir": path,
         "nb_agents": 4,
-        "nb_obstacles": 3
+        "nb_obstacles": 5
         }
-    create_solutions(path, 2000, config)
-    path = fr"dataset\4_3_8v2\val"
-    config = {
-        "device":"cpu",
-        "num_agents":3,
-        "map_shape":[8,8],
-        "root_dir": path,
-        "nb_agents": 4,
-        "nb_obstacles": 3
-        }
-    create_solutions(path, 2000, config)
+    create_solutions(path, 2, config)
+    # create_solutions(path, 2000, config)
     # total = 200
     # for i in range(0,total):
     #     if i%25 == 0:
