@@ -24,9 +24,12 @@ print(f"Model loaded from results\{exp_name}\model.pt")
 model.eval()
 tests_episodes = config["tests_episodes"]
 
-success_rate = np.load(fr"results\{exp_name}\success_rate.npy")
-flow_time = np.load(fr"results\{exp_name}\flow_time.npy")
-loss = np.load(fr"results\{exp_name}\loss.npy")
+# success_rate = np.load(fr"results\{exp_name}\success_rate.npy")
+# flow_time = np.load(fr"results\{exp_name}\flow_time.npy")
+# loss = np.load(fr"results\{exp_name}\loss.npy")
+
+success_rate = np.zeros((tests_episodes, 1))
+flow_time = np.zeros((tests_episodes, 1))
 
 for episode in range(tests_episodes):
     goals = create_goals(config["board_size"], config["num_agents"])
@@ -42,19 +45,29 @@ for episode in range(tests_episodes):
         action = np.argmax(action, axis=1)
         # pprint(action)
         obs, reward, done, info = env.step(action, emb)
-        # env.render()
+        env.render()
         if done:
             print("All agents reached their goal\n")
-            print(f"Goals: {goals}\n")
-            print(f"Positions: {env.getPositions()}\n")
+            # print(f"Goals: {goals}\n")
+            # print(f"Positions: {env.getPositions()}\n")
             # print(f"obs: {obs['board']}")
-            time.sleep(2)
+            
+            # time.sleep(2)
             break
         if i == config["max_steps"] + 7:
             print("Max steps reached")
-            print(f"Goals: {goals}\n")
-            print(f"Positions: {env.getPositions()}\n")
-            
+            # print(f"Goals: {goals}\n")
+            # print(f"Positions: {env.getPositions()}\n")
+    
+    metrics = env.computeMetrics()
+    print(metrics)
+
+    success_rate[episode] = metrics[0]
+    flow_time[episode] = metrics[1]
+
+
+print("Success rate: ", np.mean(success_rate))
+print("Flow time: ", np.mean(flow_time))
 
 kernel = 2
 # success_rate = np.convolve(success_rate, np.ones(kernel)/kernel, mode='valid')

@@ -60,6 +60,7 @@ class GraphEnv(gym.Env):
         _ = self.reset()
 
     def reset(self):
+        self.time = 0
         self.avilable_pos = np.arange(self.board_size)
         if self.starting_positions is not None:
             assert self.starting_positions.shape[0] == self.nb_agents, f"Agents and positions are not equal"
@@ -99,7 +100,7 @@ class GraphEnv(gym.Env):
         last_state = np.array([self.positionX, self.positionY]).T
 
         success = last_state[last_state == self.goal]
-        success_rate = len(success) / self.nb_agents
+        success_rate = len(success) / 2
 
         flow_time = self.computeFlowTime()
 
@@ -145,6 +146,7 @@ class GraphEnv(gym.Env):
         self._updatePositions(actions)
         self._computeDistance()
         obs = self.getObservations()
+        self.time += 1
         if self.checkAllInGoal():
           done = True
         return obs, {}, done, {}
