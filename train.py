@@ -17,17 +17,37 @@ from models.framework import Network
 from data_loader import GNNDataLoader
 
 from torch.utils.tensorboard import SummaryWriter
-if not os.path.exists(r"results\2_0_8"):
-    os.makedirs(r"results\2_0_8")
+import matplotlib.pyplot as plt
 
 with open("config_1.yaml", 'r') as config_path:
     config = yaml.load(config_path, Loader=yaml.FullLoader)
 
 exp_name = config["exp_name"]
-writer = SummaryWriter(fr"results\2_0_8{exp_name}")
+if not os.path.exists(fr"results\{exp_name}"):
+    os.makedirs(fr"results\{exp_name}")
+
+# writer = SummaryWriter(fr"results\2_0_8\{exp_name}")
 
 config["device"] = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
+def plot_metrics(config, success_rate, flow_time, loss=np.zeros(50)):
+    """
+    plot the metrics with matplotlib
+    subplots: success rate, flow time, loss
+    """
+    exp_name = config["exp_name"]
+    success_rate = np.array(success_rate)
+    flow_time = np.array(flow_time)
+    loss = np.array(loss)
+    fig, axs = plt.subplots(3, 1)
+    axs[0].plot(success_rate)
+    axs[0].set_title("Success rate")
+    axs[1].plot(flow_time)
+    axs[1].set_title("Flow time")
+    axs[2].plot(loss)
+    axs[2].set_title("Loss")
+    plt.savefig(fr"results\{exp_name}\metrics.png")
+    plt.show()
 
 if __name__ == "__main__":
     data_loader = GNNDataLoader(config)
@@ -36,12 +56,14 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss()
     model.to(config["device"])
     tests_episodes = config["tests_episodes"]
-    
+    losses = []
+    success_rate_final = []
+    flow_time_final = []
     for epoch in range(config["epochs"]):
         print(f"Epoch {epoch}")
 
 
-        ######## Training #########
+        ##### Training #########
         model.train()
         train_loss = 0
         for i, (states, trajectories) in enumerate(data_loader.train_loader):
@@ -60,12 +82,14 @@ if __name__ == "__main__":
             train_loss += total_loss
             optimizer.step()
         print(f"Loss: {train_loss.item()}")
-        writer.add_scalar('Loss/train', train_loss.item(), epoch)
-        
+        # writer.add_scalar('Loss/train', train_loss.item(), epoch)
+        losses.append(train_loss.item())
 
         ######### Validation #########
         val_loss = 0
         model.eval()
+        success_rate = []
+        flow_time = []
         for episode in range(tests_episodes):
             goals = create_goals(config["board_size"], config["num_agents"])
             env = GraphEnv(config, goals)
@@ -78,15 +102,33 @@ if __name__ == "__main__":
                 action = action.cpu().squeeze(0).numpy()
                 action = np.argmax(action, axis=1)
                 obs, reward, done, info = env.step(action, emb)
-                env.render()
                 if done:
                     break
             
             metrics = env.computeMetrics()
-            writer.add_scalar('Metrics/success_rate', metrics[0], episode)
-            writer.add_scalar('Metrics/flow_time', metrics[1], episode)
+            # writer.add_scalar('Metrics/success_rate', metrics[0], episode)
+            # writer.add_scalar('Metrics/flow_time', metrics[1], episode)
+            success_rate.append(metrics[0])
+            flow_time.append(metrics[1])
 
+        success_rate = np.mean(success_rate)
+        flow_time = np.mean(flow_time)
+        success_rate_final.append(success_rate)
+        flow_time_final.append(flow_time)
+        print(f"Success rate: {success_rate}")
+        print(f"Flow time: {flow_time}")
 
+    loss = np.array(losses)
+    success_rate = np.array(success_rate_final)
+    flow_time = np.array(flow_time_final)
+
+    np.save(fr"results\{exp_name}\success_rate.npy", success_rate)
+    np.save(fr"results\{exp_name}\flow_time.npy", flow_time)
+    np.save(fr"results\{exp_name}\loss.npy", loss)
+
+    torch.save(model.state_dict(), fr"results\{exp_name}\model.pt")
+
+    plot_metrics(config, success_rate, flow_time, loss)
 
 ############# New validation
         # print(f"Val loss: {val_loss/len(data_loader.valid_loader)}")

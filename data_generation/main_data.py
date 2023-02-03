@@ -13,7 +13,7 @@ if __name__ == "__main__":
         "nb_obstacles": 0
         }
 
-    for path in [fr"dataset\5_0_12\train", fr"dataset\5_0_12\val"]:
+    for path in [fr"dataset\5_0_12v2\train"]:
         create_solutions(path, cases, config)
         parse_traject(path)
         record_env(path)

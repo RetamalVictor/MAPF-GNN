@@ -1,6 +1,6 @@
-exp_name: 'test1'
+exp_name: '5_0_12v2\encoder_only_2'
 
-channels: [32, 32, 16]
+channels: [32, 16, 16]
 strides: [1,1,1,1,1]
 
 last_convs: [400]
@@ -8,25 +8,28 @@ encoder_dims: [64]
 encoder_layers: 1
 action_layers: 1
 
-max_time: 17
-tests_episodes: 10
-epochs: 100
-max_steps: 25
+max_time: 12
+min_time: 16
+tests_episodes: 2
+epochs: 50
+max_steps: 12
 
-board_size: [8,8]
+board_size: [12,12]
 map_shape: [5,5]
-num_agents: 2
+num_agents: 5
 obstacles: 0
 
 num_workers: 3
-batch_size: 64
+batch_size: 128
 train:
-    root_dir: 'dataset\2_0_8'
+    min_time: 12
+    root_dir: 'dataset\5_0_12v2'
     mode: 'train'
-    max_time: 13
-    nb_agents: 2
+    max_time: 12
+    nb_agents: 5
 valid:
-    root_dir: 'dataset\2_0_8'
+    min_time: 12
+    root_dir: 'dataset\5_0_12v2'
     mode: 'valid'
-    max_time: 15
-    nb_agents: 2
+    max_time: 12
+    nb_agents: 5

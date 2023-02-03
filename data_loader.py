@@ -10,14 +10,14 @@ class GNNDataLoader:
         self.config = config
     
         train_set = CreateDataset(self.config, "train")
-        valid_set = CreateDataset(self.config, "valid")
+        # valid_set = CreateDataset(self.config, "valid")
         # test_trainingSet = CreateDataset(self.config, "test_trainingSet")
         # validStep_set = CreateDataset(self.config, "validStep")
 
         self.train_loader = DataLoader(train_set, batch_size=self.config["batch_size"], shuffle=True,
                                         num_workers=self.config["num_workers"], pin_memory=True)
-        self.valid_loader = DataLoader(valid_set, batch_size=self.config["batch_size"], shuffle=True,
-                                        num_workers=self.config["num_workers"], pin_memory=True)
+        # self.valid_loader = DataLoader(valid_set, batch_size=self.config["batch_size"], shuffle=True,
+        #                                 num_workers=self.config["num_workers"], pin_memory=True)
         # self.train_loader = DataLoader(train_set, batch_size=self.config.batch_size, shuffle=True,
         #                                num_workers=self.config.data_loader_workers,
         #                                pin_memory=self.config.pin_memory)
@@ -47,18 +47,26 @@ class CreateDataset(data.Dataset):
         self.cases = os.listdir(self.dir_path)
         self.states         = np.zeros((len(self.cases),self.config["max_time"] ,self.config["nb_agents"], 2, 5, 5)) # case x time x agent x channels x dimX x dimy
         self.trajectories   = np.zeros((len(self.cases),self.config["max_time"] ,self.config["nb_agents"])) # case x time x agent
-
+        self.count = 0
         for i, case in enumerate(self.cases):
-            states = np.load(os.path.join(self.dir_path, case, "states.npy"))
-            states = states[1:,:,:,:,:]
-            tray = np.load(os.path.join(self.dir_path, case, "trajectory.npy"))
-            assert states.shape[0] == tray.shape[1], f"(before transform) Missmatch between states and trajectories: {states.shape[0]} != {tray.shape[1]}"
-            self.states[i,:,:,:,:,:] = states
-            self.trajectories[i, :, :] = tray.reshape((self.config["max_time"], self.config["nb_agents"]))
-        
+            if os.path.exists(os.path.join(self.dir_path, case, "states.npy")):
+                state = np.load(os.path.join(self.dir_path, case, "states.npy"))
+                state = state[1:self.config["max_time"]+1,:,:,:,:]
+                tray = np.load(os.path.join(self.dir_path, case, "trajectory.npy"))
+                tray = tray[:,:self.config["max_time"]]
+                if state.shape[0] < self.config["min_time"] or tray.shape[1] < self.config["min_time"]:
+                    continue
+                assert state.shape[0] == tray.shape[1], f"(before transform) Missmatch between states and trajectories: {state.shape[0]} != {tray.shape[1]}"
+                self.states[i,:,:,:,:,:] = state
+                # self.trajectories[i, :, :] = tray.reshape((self.config["max_time"], self.config["nb_agents"]))
+                self.trajectories[i, :, :] = tray.T
+                self.count += 1
+
+        self.states = self.states[:self.count,:,:,:,:,:]
+        self.trajectories = self.trajectories[:self.count,:,:]
         self.states = self.states.reshape((-1, self.config["nb_agents"], 2, 5, 5))
         self.trajectories = self.trajectories.reshape((-1,self.config["nb_agents"]))
-        assert self.states.shape[0] == self.trajectories.shape[0], f"(after transform) Missmatch between states and trajectories: {states.shape[0]} != {tray.shape[0]}"
+        assert self.states.shape[0] == self.trajectories.shape[0], f"(after transform) Missmatch between states and trajectories: {state.shape[0]} != {tray.shape[0]}"
 
 
     def __len__(self):

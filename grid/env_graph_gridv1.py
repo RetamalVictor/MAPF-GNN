@@ -28,8 +28,9 @@ class GraphEnv(gym.Env):
         """
         self.config = config
         self.max_time = self.config["max_time"]
+        self.min_time = self.config["min_time"]
         self.board_size = self.config["board_size"][0]
-        self.obstacles = self.config["obstacles"]
+        # self.obstacles = self.config["obstacles"]
         self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -68,6 +69,8 @@ class GraphEnv(gym.Env):
             self.positionX = np.random.choice(self.avilable_pos, size=(self.nb_agents))
             self.positionY = np.random.choice(self.avilable_pos, size=(self.nb_agents))
 
+        self.goal_paded = self.goal + self.pad
+
         # self.positionX = np.random.uniform(-2.0, 4.0, size=(self.nb_agents))
         # self.positionY = np.random.uniform(-2.0, 4.0, size=(self.nb_agents))
         self.headings = np.random.uniform(-3.14, 3.14, size=(self.nb_agents))
@@ -95,8 +98,8 @@ class GraphEnv(gym.Env):
     def computeMetrics(self):
         last_state = np.array([self.positionX, self.positionY]).T
 
-        success = np.where(last_state == self.goal)
-        success_rate = len(success[0]) / self.nb_agents
+        success = last_state[last_state == self.goal]
+        success_rate = len(success) / self.nb_agents
 
         flow_time = self.computeFlowTime()
 
@@ -104,13 +107,15 @@ class GraphEnv(gym.Env):
 
     def checkAllInGoal(self):
         last_state = np.array([self.positionX, self.positionY]).T
-        success = np.where(last_state == self.goal)
-        return len(success[0]) == self.nb_agents
+        # return np.sum(success[0]) == self.nb_agents
+        return np.array_equal(last_state,self.goal)
 
     def check_goals(self):
-        self.positionX = np.where(self.positionX_temp == self.goal[0],self.goal[0], self.positionX)
-        self.positiony = np.where(self.positionY_temp == self.goal[1],self.goal[1], self.positionY)
-
+        positions = np.array([self.positionX, self.positionY]).T
+        positions = np.where(positions == self.goal, self.goal, positions)
+        # self.positionX = np.where(self.positionX_temp == self.goal[:,0],self.goal[:,0], self.positionX)
+        # self.positiony = np.where(self.positionY_temp == self.goal[:, 1],self.goal[:,1], self.positionY)
+        self.positionX, self.positionY = positions[:,0], positions[:,1]
 
     def computeFlowTime(self):
         if self.checkAllInGoal():
@@ -156,6 +161,7 @@ class GraphEnv(gym.Env):
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
+        # print(self.board)
         # self.positionX += actions["vx"]
         # self.positionY += actions["vy"]
         # self.headings  += actions["headings"]
@@ -164,21 +170,27 @@ class GraphEnv(gym.Env):
       self.embedding = H
     
     def map_goal(self, agent):
-            
-        if self.goal[agent][0] <= self.posx[agent]+3 or self.goal[agent][0] >= self.posx[agent]-2:
-            goal_x = self.goal[agent][0]
-        elif self.goal[agent][0] <= self.posx[agent]+3:
-            goal_x = self.goal[agent][0] - 2
-        elif self.goal[agent][0] >= self.posx[agent]-2:
-            goal_x = self.goal[agent][0] + 3
+        # Check if it's in the FOV
+        if self.goal_paded[agent][0] < self.posx[agent]+self.pad-1 and self.goal_paded[agent][0] > self.posx[agent]-self.pad+1:
+            goal_x = -(self.posx[agent] - self.goal_paded[agent][0]) + self.pad - 1
+        
+        # Check if it's in the left or right of the FOV
+        elif self.goal_paded[agent][0] <= self.posx[agent] - self.pad + 1:
+            goal_x = 0
+        elif self.goal_paded[agent][0] >= self.posx[agent] + self.pad - 1:
+            goal_x = 1 + self.pad
 
-        if self.goal[agent][1] <= self.posy[agent]+3 or self.goal[agent][1] >= self.posy[agent]-2:
-            goal_y = self.goal[agent][1]
-        elif self.goal[agent][1] <= self.posy[agent]+3:
-            goal_y = self.goal[agent][1] - 2
-        elif self.goal[agent][1] >= self.posy[agent]-2:
-            goal_y = self.goal[agent][0] + 3
-        goal = np.clip(np.array([goal_x, goal_y]),0,5)
+        # Same for Y
+        if self.goal_paded[agent][1] < self.posy[agent]+self.pad-1 and self.goal_paded[agent][1] >= self.posy[agent]-self.pad+1:
+            goal_y = (self.posy[agent] - self.goal_paded[agent][1]) + self.pad - 1
+
+        elif self.goal_paded[agent][1] <= self.posy[agent] - self.pad + 1:
+            goal_y = 1 + self.pad
+
+        elif self.goal_paded[agent][1] >= self.posy[agent] + self.pad - 1:
+            goal_y = 0
+
+        goal = np.array([goal_y, goal_x]) # Reversed for numpy
         return goal[0], goal[1]
                 
 
@@ -187,10 +199,12 @@ class GraphEnv(gym.Env):
         self.posy = self.positionY + self.pad
         map_padded = np.pad(self.board,(self.pad,self.pad))
         FOV = np.zeros((self.nb_agents, 2, (self.pad*2)-1,(self.pad*2)-1))
+
         for agent in range(self.nb_agents):
-            FOV[agent, 0, :, :] = map_padded[self.posx[agent]-2:self.posx[agent]+3,self.posy[agent]-2:self.posy[agent]+3]
+            FOV[agent, 0, :, :] = np.flip(map_padded[self.positionY[agent]+1:self.positionY[agent]+6,self.positionX[agent]+1:self.positionX[agent]+6], axis=0)
             gx, gy = self.map_goal(agent=agent)
-            FOV[agent, 1, gx-3, gy-3] = 3
+            FOV[agent, 1, gx, gy] = 3
+
         return FOV
 
 
@@ -199,7 +213,7 @@ class GraphEnv(gym.Env):
             # "positionX": self.positionX,
             # "positionY": self.positionY,
             # "headings": self.headings,
-            "board":self.board,
+            "board":self.updateBoardGoal(),
             "fov":self.preprocessObs(),
             "adj_matrix": self.adj_matrix,
             "distances": self.distance_matrix, 
@@ -207,10 +221,9 @@ class GraphEnv(gym.Env):
         }
         return obs
 
-    def render(self, agentId=0, printNeigh=False, mode="plot"):
+    def render(self, agentId=0, printNeigh=False, printFOV=False, mode="plot"):
         
         plt.axis('off')
-        plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="*")
         if agentId is not None:
             column = np.where(self.adj_matrix[agentId])
             column = column[0]
@@ -251,25 +264,23 @@ class GraphEnv(gym.Env):
 
         if mode == "plot":   
             plt.scatter(self.positionX, self.positionY, s=150, color=self.mapper.to_rgba(self.embedding))
+            plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="X")
         if mode == "photo":
             plt.imshow(self.board, cmap="Greys")
 
         # printing FOV
-        # plt.plot([self.positionX[agentId]-2, self.positionX[agentId]+2], [self.positionY[agentId]-2,self.positionY[agentId]-2], color='red')
-        # plt.plot([self.positionX[agentId]-2, self.positionX[agentId]-2], [self.positionY[agentId]-2,self.positionY[agentId]+2], color='red')
-        # plt.plot([self.positionX[agentId]-2, self.positionX[agentId]+2], [self.positionY[agentId]+2,self.positionY[agentId]+2], color='red')
-        # plt.plot([self.positionX[agentId]+2, self.positionX[agentId]+2], [self.positionY[agentId]-2,self.positionY[agentId]+2], color='red')
-        plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]-self.sensing_range*3/4], color='red')
-        plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]-self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
-        plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]+self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
-        plt.plot([self.positionX[agentId]+self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
+        if printFOV:
+            plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]-self.sensing_range*3/4], color='red')
+            plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]-self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
+            plt.plot([self.positionX[agentId]-self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]+self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
+            plt.plot([self.positionX[agentId]+self.sensing_range*3/4, self.positionX[agentId]+self.sensing_range*3/4], [self.positionY[agentId]-self.sensing_range*3/4,self.positionY[agentId]+self.sensing_range*3/4], color='red')
         # Printing env stuff
         plt.axis([-2, self.board_size+5, -2, self.board_size+5])
         plt.plot([-1,self.board_size], [-1,-1,], color="black")
         plt.plot([-1,-1,],[self.board_size, -1], color="black")
         plt.plot([-1,self.board_size],[self.board_size, self.board_size], color="black")
         plt.plot([self.board_size, self.board_size],[self.board_size,-1], color="black")
-        plt.pause(0.1)
+        plt.pause(0.5)
         plt.clf()
         plt.axis('off')
 
@@ -280,7 +291,7 @@ class GraphEnv(gym.Env):
         return copy(self.embedding)
 
     def getPositions(self):
-        return self.positionX, self.positionY
+        return np.array([self.positionX, self.positionY]).T
     
     def check_boundary(self):
         self.positionX[self.positionX > self.board_size - 1] = self.board_size -1
@@ -289,9 +300,14 @@ class GraphEnv(gym.Env):
         self.positionY[self.positionY < 0] = 0
     
     def updateBoard(self):
-        self.board[self.positionX_temp, self.positionY_temp] = 0
-        self.board[self.positionX, self.positionY] = 1
-        
+        self.board[self.positionY_temp, self.positionX_temp] = 0
+        self.board[self.positionY, self.positionX] = 1
+
+    def updateBoardGoal(self):
+        board = copy(self.board)
+        board[self.goal[:,1], self.goal[:,0]] += 4
+        return board
+
     def check_collisions(self):
         """
         Iterate over X:
@@ -323,17 +339,43 @@ def create_goals(board_size, num_agents):
 
 
 if __name__ == "__main__":
-    agents = 3
+    agents = 2
     board_size=16
+    config = {
+        "num_agents":agents,
+        "board_size":[board_size],
+        "max_time":23,
+        "min_time":16
+    }
     sensing = 4
-    goals = np.array([[3,4],[6,2],[9,1]])
-    env = GraphEnv(agents, goal=goals, board_size=board_size, sensing_range=sensing)
+    start = np.array([[6,6], [3,3]])
+    goals = np.array([[4,3], [7,7]])
+    env = GraphEnv(config, goal=goals, board_size=board_size, sensing_range=sensing, starting_positions=start)
     emb = np.ones(agents).reshape((agents,1))
     obs = env.reset()
-    for i in range(100):
-        actions = np.random.randint(0,4,size=(agents))
-        obs, _, _, _ = env.step(actions,emb)
+    actions = np.zeros((7,agents))
+    plt.ion()
+    actions[:,0] = np.array([4,3,4,3,4,4,4]).T
+    actions[:,1] = np.zeros(7).T
+    for i in range(7):
+        """
+            1:(1,0), # Right
+            2:(0,1), # Up
+            3:(-1,0),# Left
+            4:(0,-1), # Down
+            0:(0,0)  # Idle
+        """
+        # actions = np.random.randint(0,4,size=(agents))
+        obs, _, _, _ = env.step(actions[i,:],emb)
+        # index_array = np.argmax(obs['fov'][0,:,:], axis=-1)
+        # coords = np.take_along_axis(obs['fov'][0,:,:], np.expand_dims(index_array, axis=-1), axis=-1)
+        # print(obs['fov'][0,:,:].shape)
+        # print(coords.shape)
+        pprint(obs["fov"][0]) 
+        print()
+        # plt.scatter(coords[0], coords[1])
+        # plt.pause(0.1)
+        # plt.draw()
+        # plt.clf()
         env.render(agentId=0, printNeigh=True)
-        break
     
-    pprint(obs)
