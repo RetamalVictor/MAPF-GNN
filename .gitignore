@@ -2,3 +2,4 @@
 *_pycache_
 *dataset
 *.pyc
+*results
