@@ -30,7 +30,8 @@ class GraphEnv(gym.Env):
         self.max_time = self.config["max_time"]
         self.min_time = self.config["min_time"]
         self.board_size = self.config["board_size"][0]
-        self.obstacles = obstacles
+        if obstacles is not None:
+            self.obstacles = obstacles
         self.goal = goal
         self.board =  np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -63,7 +64,8 @@ class GraphEnv(gym.Env):
         self.time = 0
         self.avilable_pos = np.arange(self.board_size)
         self.board =  np.zeros((self.board_size, self.board_size))
-        self.board[self.obstacles[:,1], self.obstacles[:,0]] = 2
+        if self.obstacles is not None:
+            self.board[self.obstacles[:,1], self.obstacles[:,0]] = 2
         if self.starting_positions is not None:
             assert self.starting_positions.shape[0] == self.nb_agents, f"Agents and positions are not equal"
             self.positionX = self.starting_positions[:,0]
@@ -71,10 +73,11 @@ class GraphEnv(gym.Env):
         else:
             self.avilable_pos_x = np.arange(self.board_size)
             self.avilable_pos_y = np.arange(self.board_size)
-            mask_x = np.isin(self.avilable_pos_x, self.obstacles[:,0])
-            mask_y = np.isin(self.avilable_pos_y, self.obstacles[:,1])
-            self.avilable_pos_x = self.avilable_pos_x[~mask_x]
-            self.avilable_pos_y = self.avilable_pos_y[~mask_y]
+            if self.obstacles is not None:
+                mask_x = np.isin(self.avilable_pos_x, self.obstacles[:,0])
+                mask_y = np.isin(self.avilable_pos_y, self.obstacles[:,1])
+                self.avilable_pos_x = self.avilable_pos_x[~mask_x]
+                self.avilable_pos_y = self.avilable_pos_y[~mask_y]
             self.positionX = np.random.choice(self.avilable_pos_x, size=(self.nb_agents))
             self.positionY = np.random.choice(self.avilable_pos_y, size=(self.nb_agents))
 
@@ -168,7 +171,8 @@ class GraphEnv(gym.Env):
         self.positionX += action_x
         self.positionY += action_y
         self.check_goals()
-        self.check_collision_obstacle()
+        if self.obstacles is not None:
+            self.check_collision_obstacle()
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
@@ -261,7 +265,7 @@ class GraphEnv(gym.Env):
                     plt.plot(
                         [self.positionX[agent], self.positionX[column[i]]],
                         [self.positionY[agent], self.positionY[column[i]]],
-                        color="red",
+                        color="black",
                     )
                     if printNeigh:
                         neig_column = np.where(self.adj_matrix[column[i]])
@@ -276,7 +280,8 @@ class GraphEnv(gym.Env):
         if mode == "plot":   
             plt.scatter(self.positionX, self.positionY, s=150, color=self.mapper.to_rgba(self.embedding))
             plt.scatter(self.goal[:, 0], self.goal[:, 1], color="blue", marker="*", s=150)
-            plt.scatter(self.obstacles[:, 0], self.obstacles[:, 1], color="black", marker="s", s=150)
+            if self.obstacles is not None:
+                plt.scatter(self.obstacles[:, 0], self.obstacles[:, 1], color="black", marker="s", s=150)
         if mode == "photo":
             plt.imshow(self.board, cmap="Greys")
 
@@ -353,12 +358,25 @@ class GraphEnv(gym.Env):
         return f"Game Board:\n{self.board}"
 
 ########## utils ##########
-def create_goals(board_size, num_agents):
-    avilable_pos = np.arange(board_size[0])
-    goals_x = np.random.choice(avilable_pos, size=num_agents,replace=False)
-    goals_y = np.random.choice(avilable_pos, size=num_agents,replace=False)
+def create_goals(board_size, num_agents, obstacles=None):
+    avilable_pos_x = np.arange(board_size[0])
+    avilable_pos_y = np.arange(board_size[1])
+    if obstacles is not None:
+        mask_x = np.isin(avilable_pos_x, obstacles[:,0])
+        mask_y = np.isin(avilable_pos_y, obstacles[:,1])
+        avilable_pos_x = avilable_pos_x[~mask_x]
+        avilable_pos_y = avilable_pos_y[~mask_y]
+    goals_x = np.random.choice(avilable_pos_x, size=num_agents,replace=False)
+    goals_y = np.random.choice(avilable_pos_y, size=num_agents,replace=False)
     goals = np.array([goals_x, goals_y]).T
     return goals
+
+def create_obstacles(board_size,nb_obstacles):
+    avilable_pos = np.arange(board_size[0])
+    obstacles_x = np.random.choice(avilable_pos, size=nb_obstacles,replace=False)
+    obstacles_y = np.random.choice(avilable_pos, size=nb_obstacles,replace=False)
+    obstacles = np.array([obstacles_x, obstacles_y]).T
+    return obstacles
 
 
 if __name__ == "__main__":

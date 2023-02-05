@@ -8,12 +8,16 @@ if __name__ == "__main__":
     config = {
         "device":"cpu",
         "num_agents":5,
-        "map_shape":[12,12],
+        "map_shape":[28,28],
         "nb_agents": 5,
-        "nb_obstacles": 0
-        }
+        "nb_obstacles": 8,
+        "sensor_range": 4,
+        "board_size":[28,28],
+        "max_time":32,
+        "min_time":9 # min time the tray should go from start to goal
+    }
 
-    for path in [fr"dataset\5_0_12v2\train"]:
-        create_solutions(path, cases, config)
+    for path in [fr"dataset\5_8_28\train"]:
+        # create_solutions(path, cases, config)
         parse_traject(path)
-        record_env(path)
+        record_env(path, config)

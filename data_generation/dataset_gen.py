@@ -122,8 +122,9 @@ def data_gen(input_dict, output_path):
         yaml.safe_dump(param, parameters_path)
 
 def create_solutions(path, num_cases, config): 
+    cases_ready = len(os.listdir(path))
     print("Generating solutions")
-    for i in range(num_cases):
+    for i in range(cases_ready+1,num_cases):
         if i%25 == 0:
             print(f"Solution -- [{i}/{num_cases}]")
         inpt = gen_input(config["map_shape"],config["nb_obstacles"],config["nb_agents"])

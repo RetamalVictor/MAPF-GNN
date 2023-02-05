@@ -1,0 +1,39 @@
+exp_name: '5_0_12v2\gnn_quick'
+
+# CNN
+channels: [32, 16, 16]
+strides: [1,1,1,1,1]
+
+# Encoder MLP
+encoder_layers: 1
+last_convs: [400]
+encoder_dims: [64]
+
+# GNN
+graph_filters: [2]
+node_dims: [128]
+
+# Policy MLP
+action_layers: 1
+
+# Training
+epochs: 60
+tests_episodes: 25
+max_steps: 26
+
+# Simulation
+board_size: [12,12]
+map_shape: [5,5]
+num_agents: 5
+obstacles: 0
+max_time: 11
+
+# Data Loading
+min_time: 12
+num_workers: 3
+batch_size: 128
+train:
+    root_dir: 'dataset\5_0_12'
+    mode: 'train'
+    min_time: 7
+    nb_agents: 5

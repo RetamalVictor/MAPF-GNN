@@ -12,19 +12,23 @@ import torch
 from torch import nn
 from torch import optim
 
-from grid.env_graph_gridv1 import GraphEnv, create_goals
-from models.framework import Network
+from grid.env_graph_gridv1 import GraphEnv, create_goals, create_obstacles
+# from models.framework_baseline import Network
+from models.framework_gnn_mine import Network
 from data_loader import GNNDataLoader
 
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
-with open("config_1.yaml", 'r') as config_path:
+with open("config_gnn_test.yaml", 'r') as config_path:
     config = yaml.load(config_path, Loader=yaml.FullLoader)
 
 exp_name = config["exp_name"]
 if not os.path.exists(fr"results\{exp_name}"):
     os.makedirs(fr"results\{exp_name}")
+
+with open(fr"results\{exp_name}\config.yaml", 'w') as config_path:
+    yaml.dump(config, config_path)
 
 # writer = SummaryWriter(fr"results\2_0_8\{exp_name}")
 
@@ -47,13 +51,15 @@ def plot_metrics(config, success_rate, flow_time, loss=np.zeros(50)):
     axs[2].plot(loss)
     axs[2].set_title("Loss")
     plt.savefig(fr"results\{exp_name}\metrics.png")
-    plt.show()
+    # plt.show()
 
 if __name__ == "__main__":
+    print("----- Training stats -----")
     data_loader = GNNDataLoader(config)
     model = Network(config)
-    optimizer = optim.Adam(model.parameters(), lr=3e-4)
+    optimizer = optim.Adam(model.parameters(), lr=3e-4, weight_decay=1e-4)
     criterion = nn.CrossEntropyLoss()
+
     model.to(config["device"])
     tests_episodes = config["tests_episodes"]
     losses = []
@@ -62,16 +68,15 @@ if __name__ == "__main__":
     for epoch in range(config["epochs"]):
         print(f"Epoch {epoch}")
 
-
-        ##### Training #########
+        # ##### Training #########
         model.train()
         train_loss = 0
-        for i, (states, trajectories) in enumerate(data_loader.train_loader):
+        for i, (states, trajectories, gso) in enumerate(data_loader.train_loader):
             optimizer.zero_grad()
             states = states.to(config["device"])
             trajectories = trajectories.to(config["device"])
-
-            output = model(states)
+            gso = gso.to(config["device"])
+            output = model(states, gso)
 
             total_loss = torch.zeros(1,requires_grad=True)
             for agent in range(trajectories.shape[1]):
@@ -92,13 +97,15 @@ if __name__ == "__main__":
         flow_time = []
         for episode in range(tests_episodes):
             goals = create_goals(config["board_size"], config["num_agents"])
-            env = GraphEnv(config, goals)
+            obstacles = create_obstacles(config["board_size"],  config["obstacles"])
+            env = GraphEnv(config, goal=goals, obstacles=obstacles)
             emb = env.getEmbedding()
             obs = env.reset()
             for i in range(config["max_steps"]):
-                obs = torch.tensor(obs["fov"]).float().unsqueeze(0).to(config["device"])
+                fov = torch.tensor(obs["fov"]).float().unsqueeze(0).to(config["device"])
+                gso = torch.tensor(obs["adj_matrix"]).float().unsqueeze(0).to(config["device"])
                 with torch.no_grad():
-                    action = model(obs)
+                    action = model(fov, gso)
                 action = action.cpu().squeeze(0).numpy()
                 action = np.argmax(action, axis=1)
                 obs, reward, done, info = env.step(action, emb)
@@ -110,7 +117,6 @@ if __name__ == "__main__":
             # writer.add_scalar('Metrics/flow_time', metrics[1], episode)
             success_rate.append(metrics[0])
             flow_time.append(metrics[1])
-
         success_rate = np.mean(success_rate)
         flow_time = np.mean(flow_time)
         success_rate_final.append(success_rate)
