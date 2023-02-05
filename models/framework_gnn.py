@@ -1,9 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-from utils_weights import weights_init
-import gnn_torch as gml
-import numpy as np
+from networks.utils_weights import weights_init
+from networks.gnn import GCNLayer
 from copy import copy
 
 
@@ -13,18 +11,15 @@ class Network(nn.Module):
         self.config = config  # json file
         self.S = None
         self.num_agents = self.config["num_agents"]
-        self.map_shape = self.config["map_shape"] #FOV
+        self.map_shape = self.config["map_shape"]  # FOV
         self.num_actions = 5
 
-        # dim_encoder_mlp = 1
         dim_encoder_mlp = self.config["encoder_layers"]
-        # self.compress_Features_dim = [128]  # Check
         self.compress_Features_dim = self.config["encoder_dims"]  # Check
 
         self.graph_filter = self.config["graph_filters"]
         self.node_dim = self.config["node_dims"]
 
-        # dim_action_mlp = 1
         dim_action_mlp = self.config["action_layers"]
 
         action_features = [self.num_actions]
@@ -63,62 +58,58 @@ class Network(nn.Module):
             conv_layers.append(nn.BatchNorm2d(num_features=channels[l + 1]))
             conv_layers.append(nn.ReLU(inplace=True))
 
-            W_tmp = (
-                int((W_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l])
-                + 1
-            )
-            H_tmp = (
-                int((H_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l])
-                + 1
-            )
+            W_tmp = int((W_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l]) + 1
+            H_tmp = int((H_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l]) + 1
 
             self.conv_dim_W.append(W_tmp)
             self.conv_dim_H.append(H_tmp)
 
         self.convLayers = nn.Sequential(*conv_layers)
-        conv_features_dim = (
-            channels[-1] * self.conv_dim_W[-1] * self.conv_dim_H[-1]
-        )  # this is the dimension of the features after the convolutional layers
+        # this is the dimension of the features after the convolutional layers
         ############################################################
         # MLP Encoder
         ############################################################
 
         # self.compress_Features_dim = [conv_features_dim] + self.compress_Features_dim
-        self.compress_Features_dim = self.config["last_convs"] + self.compress_Features_dim
+        self.compress_Features_dim = (
+            self.config["last_convs"] + self.compress_Features_dim
+        )
 
         mlp_encoder = []
         for l in range(dim_encoder_mlp):
             mlp_encoder.append(
-                nn.Linear(self.compress_Features_dim[l], self.compress_Features_dim[l + 1])
+                nn.Linear(
+                    self.compress_Features_dim[l], self.compress_Features_dim[l + 1]
+                )
             )
             mlp_encoder.append(nn.ReLU(inplace=True))
 
         self.compressMLP = nn.Sequential(*mlp_encoder)
-
         self.shared_feats = self.compress_Features_dim[-1]
+
         ############################################################
         # GNN
         ############################################################
 
-        self.gnn_filter_len = len(self.graph_filter)  # Number of graph filtering layers
+        self.nb_filter = len(self.graph_filter)  # Number of graph filtering layers
         self.features = [self.compress_Features_dim[-1]] + self.node_dim  # Features
         # self.F = [numFeatureMap] + dimNodeSignals  # Features
-        self.filter_taps = self.graph_filter  # nFilterTaps # Filter taps
-        self.bias = True
-
-        gfl = []  # Graph Filtering Layers
-        for l in range(self.gnn_filter_len):
-            # \\ Graph filtering stage:
-            gfl.append(gml.GraphFilterBatch(self.features[l], self.features[l + 1], self.filter_taps[l], self.bias))
-            # There is a 2*l below here, because we have three elements per
-            # layer: graph filter, nonlinearity and pooling, so after each layer
-            # we're actually adding elements to the (sequential) list.
-
-            # \\ Nonlinearity
-            gfl.append(nn.ReLU(inplace=True))
-
+        self.graph_filter  # nFilterTaps # Filter taps
+        gcn = []
+        for l in range(self.nb_filter):
+            gcn.append(
+                GCNLayer(
+                    self.num_agents,
+                    self.features[l],
+                    self.features[l + 1],
+                    self.graph_filter[l],
+                    activation=None,
+                )
+            )
+            gcn.append(nn.ReLU(inplace=True))
         # And now feed them into the sequential
-        self.GFL = nn.Sequential(*gfl)  # Graph Filtering Layers
+        self.GFL = nn.Sequential(*gcn)  # Graph Filtering Layers
+
         ############################################################
         # MLP Action
         ############################################################
@@ -144,33 +135,37 @@ class Network(nn.Module):
         """
         batch_size = states.shape[0]
         # This vector is only needed for the GNN
-        feature_vector = torch.zeros(batch_size, self.compress_Features_dim[-1], self.num_agents).to(self.config["device"])
+        feature_vector = torch.zeros(
+            batch_size, self.compress_Features_dim[-1], self.num_agents
+        ).to(self.config["device"])
         for id_agent in range(self.num_agents):
-          agent_state = states[:,id_agent, :, :, :]
-          features = self.convLayers(agent_state)
-          features_flatten = features.view(features.size(0), -1) # B x T*C*W*H
-          encoded_feats = self.compressMLP(features_flatten)
-          encoded_feats_flat = encoded_feats.view(encoded_feats.size(0),-1)
-          feature_vector[:, :, id_agent] = encoded_feats_flat# B x F x N
+            agent_state = states[:, id_agent, :, :, :]
+            features = self.convLayers(agent_state)
+            features_flatten = features.view(features.size(0), -1)  # B x T*C*W*H
+            encoded_feats = self.compressMLP(features_flatten)
+            encoded_feats_flat = encoded_feats.view(encoded_feats.size(0), -1)
+            feature_vector[:, :, id_agent] = encoded_feats_flat  # B x F x N
 
-        for layer in range(self.gnn_filter_len):
+        for layer in range(self.nb_filter):
             self.GFL[layer * 2].addGSO(gso)
-        
-        features_shared = self.GFL(feature_vector) # B x F x N
-        
 
-        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(self.config["device"])
+        features_shared = self.GFL(feature_vector)  # B x F x N
+
+        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
+            self.config["device"]
+        )
         for id_agent in range(self.num_agents):
             agent_shared = features_shared[:, :, id_agent]
-            action_agent = self.actionMLP(agent_shared) # 1 x 5
-            action_logits[:, id_agent, :]=action_agent
+            action_agent = self.actionMLP(agent_shared)  # 1 x 5
+            action_logits[:, id_agent, :] = action_agent
 
         return action_logits
+
 
 if __name__ == "__main__":
     config = {
         "device": "cpu",
-        "map_shape": [5,5],
+        "map_shape": [5, 5],
         "num_agents": 4,
         "num_actions": 5,
         "last_convs": [400],
@@ -179,20 +174,21 @@ if __name__ == "__main__":
         "graph_filters": [2],
         "encoder_dims": [64],
         "dim_action_mlp": 1,
-        "encoder_layers":1,
-        "action_layers":1,
+        "encoder_layers": 1,
+        "action_layers": 1,
         "compress_Features_dim": [64],
-
     }
     S = torch.eye(4).unsqueeze(0)
-    S[:,0,0] = 0
+    S[:, 0, 0] = 10
     print(S)
 
-    gf = Network(config=config,)
+    gf = Network(
+        config=config,
+    )
 
     print(gf)
     # states.shape = (batch x agent  x channels x dimX x dimY)
-    states = torch.ones(size=(1,4,2,5,5))
+    states = torch.ones(size=(1, 4, 2, 5, 5))
 
     # x is of shape: batchSize x dimInFeatures x numberNodesIn
     x_t = gf(states, S)

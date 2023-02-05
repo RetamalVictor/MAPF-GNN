@@ -12,7 +12,7 @@ class Network(nn.Module):
         self.config = config  # json file
         self.S = None
         self.num_agents = self.config["num_agents"]
-        self.map_shape = self.config["map_shape"] #FOV
+        self.map_shape = self.config["map_shape"]  # FOV
         self.num_actions = 5
 
         # dim_encoder_mlp = 1
@@ -59,14 +59,8 @@ class Network(nn.Module):
             conv_layers.append(nn.BatchNorm2d(num_features=channels[l + 1]))
             conv_layers.append(nn.ReLU(inplace=True))
 
-            W_tmp = (
-                int((W_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l])
-                + 1
-            )
-            H_tmp = (
-                int((H_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l])
-                + 1
-            )
+            W_tmp = int((W_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l]) + 1
+            H_tmp = int((H_tmp - filter_taps[l] + 2 * padding_size[l]) / strides[l]) + 1
 
             self.conv_dim_W.append(W_tmp)
             self.conv_dim_H.append(H_tmp)
@@ -80,12 +74,16 @@ class Network(nn.Module):
         ############################################################
 
         # self.compress_Features_dim = [conv_features_dim] + self.compress_Features_dim
-        self.compress_Features_dim = self.config["last_convs"] + self.compress_Features_dim
+        self.compress_Features_dim = (
+            self.config["last_convs"] + self.compress_Features_dim
+        )
 
         mlp_encoder = []
         for l in range(dim_encoder_mlp):
             mlp_encoder.append(
-                nn.Linear(self.compress_Features_dim[l], self.compress_Features_dim[l + 1])
+                nn.Linear(
+                    self.compress_Features_dim[l], self.compress_Features_dim[l + 1]
+                )
             )
             mlp_encoder.append(nn.ReLU(inplace=True))
 
@@ -115,15 +113,17 @@ class Network(nn.Module):
         batch_size = states.shape[0]
         # This vector is only needed for the GNN
         # feature_vector = torch.zeros(batch_size, self.compress_features_dim[-1], self.num_agents).to(self.config["device"])
-        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(self.config["device"])
+        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
+            self.config["device"]
+        )
         for id_agent in range(self.num_agents):
-          agent_state = states[:,id_agent, :, :, :]
-          features = self.convLayers(agent_state)
-          features_flatten = features.view(features.size(0), -1) # B x T*C*W*H
-          encoded_feats = self.compressMLP(features_flatten)
-          # feature_vector[:, :, id_agent] # B x F x N
-          encoded_feats_flat = encoded_feats.view(encoded_feats.size(0),-1)
-          action_agent = self.actionMLP(encoded_feats_flat) # 1 x 5
-          action_logits[:, id_agent, :]=action_agent
+            agent_state = states[:, id_agent, :, :, :]
+            features = self.convLayers(agent_state)
+            features_flatten = features.view(features.size(0), -1)  # B x T*C*W*H
+            encoded_feats = self.compressMLP(features_flatten)
+            # feature_vector[:, :, id_agent] # B x F x N
+            encoded_feats_flat = encoded_feats.view(encoded_feats.size(0), -1)
+            action_agent = self.actionMLP(encoded_feats_flat)  # 1 x 5
+            action_logits[:, id_agent, :] = action_agent
 
         return action_logits

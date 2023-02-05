@@ -9,15 +9,15 @@ import math
 
 def weights_init(m):
     classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
+    if classname.find("Conv") != -1:
         # m.weight.data.normal_(0.0, 0.02)
         torch.nn.init.xavier_normal_(m.weight)
 
-    elif classname.find('BatchNorm') != -1:
+    elif classname.find("BatchNorm") != -1:
         m.weight.data.normal_(1.0, 0.02)
         m.bias.data.fill_(0.0)
 
-    elif classname.find('Linear') != -1:
+    elif classname.find("Linear") != -1:
         torch.nn.init.xavier_normal_(m.weight)
         m.bias.data.fill_(0.0)
 
@@ -40,7 +40,7 @@ def init_model_weights(m):
     for m in m.modules():
         if isinstance(m, nn.Conv2d):
             n = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
-            m.weight.data.normal_(0, math.sqrt(2. / n))
+            m.weight.data.normal_(0, math.sqrt(2.0 / n))
         elif isinstance(m, nn.BatchNorm2d):
             m.weight.data.fill_(1)
             m.bias.data.zero_()
