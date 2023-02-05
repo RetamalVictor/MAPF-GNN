@@ -3,3 +3,7 @@
 *dataset
 *.pyc
 *results
+*continous/
+*other/
+*journal.md
+*testbed.py
