@@ -1,8 +1,7 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from networks.utils_weights import weights_init
-import numpy as np
+from networks.gnn import GCNLayer, MessagePassingLayer
 from copy import copy
 
 
@@ -15,12 +14,12 @@ class Network(nn.Module):
         self.map_shape = self.config["map_shape"]  # FOV
         self.num_actions = 5
 
-        # dim_encoder_mlp = 1
         dim_encoder_mlp = self.config["encoder_layers"]
-        # self.compress_Features_dim = [128]  # Check
         self.compress_Features_dim = self.config["encoder_dims"]  # Check
 
-        # dim_action_mlp = 1
+        self.graph_filter = self.config["graph_filters"]
+        self.node_dim = self.config["node_dims"]
+
         dim_action_mlp = self.config["action_layers"]
 
         action_features = [self.num_actions]
@@ -66,9 +65,7 @@ class Network(nn.Module):
             self.conv_dim_H.append(H_tmp)
 
         self.convLayers = nn.Sequential(*conv_layers)
-        conv_features_dim = (
-            channels[-1] * self.conv_dim_W[-1] * self.conv_dim_H[-1]
-        )  # this is the dimension of the features after the convolutional layers
+        # this is the dimension of the features after the convolutional layers
         ############################################################
         # MLP Encoder
         ############################################################
@@ -88,12 +85,37 @@ class Network(nn.Module):
             mlp_encoder.append(nn.ReLU(inplace=True))
 
         self.compressMLP = nn.Sequential(*mlp_encoder)
+        self.shared_feats = self.compress_Features_dim[-1]
+
+        ############################################################
+        # GNN
+        ############################################################
+
+        self.nb_filter = len(self.graph_filter)  # Number of graph filtering layers
+        self.features = [self.compress_Features_dim[-1]] + self.node_dim  # Features
+        # self.F = [numFeatureMap] + dimNodeSignals  # Features
+        self.graph_filter  # nFilterTaps # Filter taps
+        gcn = []
+        for l in range(self.nb_filter):
+            gcn.append(
+                MessagePassingLayer(
+                    self.num_agents,
+                    self.features[l],
+                    self.features[l + 1],
+                    self.graph_filter[l],
+                    activation=None,
+                )
+            )
+            gcn.append(nn.ReLU(inplace=True))
+        # And now feed them into the sequential
+        self.GFL = nn.Sequential(*gcn)  # Graph Filtering Layers
 
         ############################################################
         # MLP Action
         ############################################################
 
-        action_features = [self.compress_Features_dim[-1]] + action_features
+        # action_features = [self.compress_Features_dim[-1]] + action_features
+        action_features = [self.features[-1]] + action_features
 
         mlp_action = []
         for l in range(dim_action_mlp):
@@ -106,24 +128,68 @@ class Network(nn.Module):
         self.actionMLP = nn.Sequential(*mlp_action)
         self.apply(weights_init)
 
-    def forward(self, states):
+    def forward(self, states, gso):
         """
         states.shape = (batch x agent  x channels x dimX x dimY)
+        gsos.shape = (batch x agent x agent)
         """
         batch_size = states.shape[0]
         # This vector is only needed for the GNN
-        # feature_vector = torch.zeros(batch_size, self.compress_features_dim[-1], self.num_agents).to(self.config["device"])
-        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
-            self.config["device"]
-        )
+        feature_vector = torch.zeros(
+            batch_size, self.compress_Features_dim[-1], self.num_agents
+        ).to(self.config["device"])
         for id_agent in range(self.num_agents):
             agent_state = states[:, id_agent, :, :, :]
             features = self.convLayers(agent_state)
             features_flatten = features.view(features.size(0), -1)  # B x T*C*W*H
             encoded_feats = self.compressMLP(features_flatten)
-            # feature_vector[:, :, id_agent] # B x F x N
             encoded_feats_flat = encoded_feats.view(encoded_feats.size(0), -1)
-            action_agent = self.actionMLP(encoded_feats_flat)  # 1 x 5
+            feature_vector[:, :, id_agent] = encoded_feats_flat  # B x F x N
+
+        for layer in range(self.nb_filter):
+            self.GFL[layer * 2].addGSO(gso)
+
+        features_shared = self.GFL(feature_vector)  # B x F x N
+
+        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
+            self.config["device"]
+        )
+        for id_agent in range(self.num_agents):
+            agent_shared = features_shared[:, :, id_agent]
+            action_agent = self.actionMLP(agent_shared)  # 1 x 5
             action_logits[:, id_agent, :] = action_agent
 
         return action_logits
+
+
+if __name__ == "__main__":
+    config = {
+        "device": "cpu",
+        "map_shape": [5, 5],
+        "num_agents": 4,
+        "num_actions": 5,
+        "last_convs": [400],
+        "channels": [2, 16, 16],
+        "node_dims": [128],
+        "graph_filters": [2],
+        "encoder_dims": [64],
+        "dim_action_mlp": 1,
+        "encoder_layers": 1,
+        "action_layers": 1,
+        "compress_Features_dim": [64],
+    }
+    S = torch.eye(4).unsqueeze(0)
+    S[:, 0, 0] = 10
+    print(S)
+
+    gf = Network(
+        config=config,
+    )
+
+    print(gf)
+    # states.shape = (batch x agent  x channels x dimX x dimY)
+    states = torch.ones(size=(1, 4, 2, 5, 5))
+
+    # x is of shape: batchSize x dimInFeatures x numberNodesIn
+    x_t = gf(states, S)
+    print(x_t)

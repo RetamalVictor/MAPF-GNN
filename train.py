@@ -19,7 +19,7 @@ from grid.env_graph_gridv1 import GraphEnv, create_goals, create_obstacles
 from data_loader import GNNDataLoader
 
 
-with open("config_gnn_test.yaml", "r") as config_path:
+with open(r"configs\config_gnn_test.yaml", "r") as config_path:
     config = yaml.load(config_path, Loader=yaml.FullLoader)
 
 net_type = config["net_type"]
@@ -31,7 +31,8 @@ if net_type == "baseline":
     from models.framework_baseline import Network
 
 elif net_type == "gnn":
-    from models.framework_gnn import Network
+    # from models.framework_gnn import Network
+    from models.framework_gnn_message import Network
 
 
 if not os.path.exists(rf"results\{exp_name}"):

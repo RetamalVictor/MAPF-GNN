@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from scipy.linalg import sqrtm
 from scipy.special import softmax
 import math
+from copy import copy
+
 
 class GCNLayer(nn.Module):
     def __init__(
@@ -99,6 +101,7 @@ class GCNLayer(nn.Module):
 
         return node_feats
 
+
 class MessagePassingLayer(nn.Module):
     def __init__(
         self,
@@ -118,8 +121,8 @@ class MessagePassingLayer(nn.Module):
             torch.Tensor(self.in_features, self.filter_number, self.out_features)
         )
         self.W2 = nn.parameter.Parameter(
-                   torch.Tensor(self.in_features, 1, self.out_features)
-        )     
+            torch.Tensor(self.in_features, self.out_features)
+        )
         if bias:
             self.b = nn.parameter.Parameter(torch.Tensor(self.out_features))
         else:
@@ -134,6 +137,8 @@ class MessagePassingLayer(nn.Module):
         self.W.data.uniform_(-stdv, stdv)
         if self.b is not None:
             self.b.data.uniform_(-stdv, stdv)
+        stdv = 1.0 / math.sqrt(self.in_features)
+        self.W2.data.uniform_(-stdv, stdv)
 
     def extra_repr(self):
         reprString = (
@@ -169,7 +174,10 @@ class MessagePassingLayer(nn.Module):
         D_mod_invroot[D_mod_invroot == torch.inf] = 0
         adj_matrix = D_mod_invroot @ self.adj_matrix @ D_mod_invroot
 
-        node_feats_not_shared = node_feats.reshape([batch_size, self.in_features, self.n_nodes])
+        node_feats_not_shared = copy(node_feats)
+        node_feats_not_shared = node_feats.reshape(
+            [batch_size, self.n_nodes, self.in_features]
+        )
         # K-hops
         node_feats = node_feats.reshape([batch_size, self.in_features, self.n_nodes])
         z = node_feats.reshape([batch_size, 1, self.in_features, self.n_nodes])
@@ -186,10 +194,8 @@ class MessagePassingLayer(nn.Module):
         ).permute(1, 0)
         node_feats = z @ W
         node_feats = node_feats.permute(0, 2, 1)
-        
-        W2 = self.W2.reshape(
-            [self.out_features, self.in_features]
-        ).permute(1, 0)
+
+        W2 = self.W2.reshape([self.out_features, self.in_features]).permute(1, 0)
 
         node_feats_not_shared = node_feats_not_shared @ W2
         node_feats_not_shared = node_feats_not_shared.permute(0, 2, 1)
@@ -204,39 +210,40 @@ class MessagePassingLayer(nn.Module):
 
         return node_feats
 
-class GCNLayerNumpy():
-  def __init__(self,n_nodes, in_features, out_features, activation=None, name=''):
-    self.in_features = in_features
-    self.out_features = out_features
-    self.n_nodes = n_nodes
-    self.W = glorot_init(self.in_features, self.out_features)
-    self.activation = activation
-    self.name = name
 
-  def __repr__(self):
-    return f"GCN: W{'_' + self.name if self.name else ''} ({self.n_inputs}, {self.n_outputs})"
+class GCNLayerNumpy:
+    def __init__(self, n_nodes, in_features, out_features, activation=None, name=""):
+        self.in_features = in_features
+        self.out_features = out_features
+        self.n_nodes = n_nodes
+        self.W = glorot_init(self.in_features, self.out_features)
+        self.activation = activation
+        self.name = name
 
-  def forward(self, adj_matrix, node_feats, W=None, b=None):
+    def __repr__(self):
+        return f"GCN: W{'_' + self.name if self.name else ''} ({self.n_inputs}, {self.n_outputs})"
 
-    if W is None:
-      W = self.W
-    adj_matrix += np.eye(self.n_nodes)
-    # n_neig = adj_matrix.sum(axis=-1, keepdims=True)
+    def forward(self, adj_matrix, node_feats, W=None, b=None):
 
-    # Generating an empty D
-    D_mod = np.zeros_like(adj_matrix)
-    # Filling it with the total number of neigh (plus self connections)
-    np.fill_diagonal(D_mod, np.asarray(adj_matrix.sum(axis=1)).flatten())
-    D_mod_invroot = np.linalg.inv(sqrtm(D_mod))
+        if W is None:
+            W = self.W
+        adj_matrix += np.eye(self.n_nodes)
+        # n_neig = adj_matrix.sum(axis=-1, keepdims=True)
 
-    adj_matrix = D_mod_invroot @ adj_matrix @ D_mod_invroot
-    node_feats = adj_matrix @ node_feats @ W
-    if b is not None:
-      node_feats += node_feats + b
-    # node_feats = node_feats / n_neig
-    if self.activation is not None:
-      node_feats = self.activation(node_feats)
-    return node_feats
+        # Generating an empty D
+        D_mod = np.zeros_like(adj_matrix)
+        # Filling it with the total number of neigh (plus self connections)
+        np.fill_diagonal(D_mod, np.asarray(adj_matrix.sum(axis=1)).flatten())
+        D_mod_invroot = np.linalg.inv(sqrtm(D_mod))
+
+        adj_matrix = D_mod_invroot @ adj_matrix @ D_mod_invroot
+        node_feats = adj_matrix @ node_feats @ W
+        if b is not None:
+            node_feats += node_feats + b
+        # node_feats = node_feats / n_neig
+        if self.activation is not None:
+            node_feats = self.activation(node_feats)
+        return node_feats
 
 
 def glorot_init(nin, nout):
@@ -245,7 +252,8 @@ def glorot_init(nin, nout):
 
 
 if __name__ == "__main__":
-    node_feats = np.arange(16, dtype=np.float32).reshape((2, 4, 2))
+    node_feats = np.arange(16, dtype=np.float32).reshape((2, 2, 4))
+    print(node_feats)
     adj_matrix = np.array(
         [
             [[1, 1, 0, 0], [1, 1, 1, 1], [0, 1, 1, 1], [0, 1, 1, 1]],
@@ -256,28 +264,29 @@ if __name__ == "__main__":
     n_nodes = adj_matrix.shape[2]
     node_feats = torch.from_numpy(node_feats)
     adj_matrix = torch.from_numpy(adj_matrix)
-    in_features = node_feats.shape[2]
+    in_features = node_feats.shape[1]
     out_features = 2
     print(f"Node features shape: {node_feats.shape}")
     print(f"Adjacency matrix shape: {adj_matrix.shape}")
 
     # W = np.random.uniform(size=(node_feats.shape[-1], out_features))
     # W = np.array([[1., 0.], [0., 1.]])
-    activation = nn.ReLU()
+    activation = nn.LeakyReLU()
     K = 2
-    gcn = GCNLayer(
-        n_nodes,
-        in_features,
-        out_features,
-        filter_number=K,
-        activation=activation,
-        name="test",
-        bias=True,
-    )
-    print(gcn)
-    gcn.addGSO(adj_matrix)
-    node_feats = gcn(node_feats)
-    print(node_feats)
+    for i in range(3):
+        gcn = MessagePassingLayer(
+            n_nodes,
+            in_features,
+            out_features,
+            filter_number=K,
+            activation=activation,
+            name="test",
+            bias=False,
+        )
+        print(gcn)
+        gcn.addGSO(adj_matrix)
+        node_feats = gcn(node_feats)
+        print(node_feats)
 
     # print("Node features:\n", node_feats)
     # print("\nAdjacency matrix:\n", adj_matrix)

@@ -1,7 +1,7 @@
-exp_name: '5_0_12v2\gnn_quick'
+exp_name: 'trained_models\gnn_k3'
 
 # CNN
-channels: [32, 16, 16]
+channels: [16, 16, 16]
 strides: [1,1,1,1,1]
 
 # Encoder MLP
@@ -10,30 +10,33 @@ last_convs: [400]
 encoder_dims: [64]
 
 # GNN
-graph_filters: [2]
+graph_filters: [3]
 node_dims: [128]
 
 # Policy MLP
 action_layers: 1
 
 # Training
-epochs: 60
-tests_episodes: 25
-max_steps: 26
-
+epochs: 50
+tests_episodes: 100
+net_type: 'gnn'
+msg_type: 'gcn'
 # Simulation
-board_size: [12,12]
+board_size: [18,18]
 map_shape: [5,5]
 num_agents: 5
-obstacles: 0
-max_time: 11
+obstacles: 8
+max_steps: 32
+max_time: 32
+sensing_range: 6
 
 # Data Loading
-min_time: 12
+min_time: 1
 num_workers: 3
 batch_size: 128
 train:
-    root_dir: 'dataset\5_0_12'
+    root_dir: 'dataset\5_8_28'
     mode: 'train'
-    min_time: 7
+    min_time: 5
+    max_time_dl: 25
     nb_agents: 5
