@@ -2,6 +2,9 @@
 
 This is the repository linked to the replication project done for the course "Machine Learning for Graph" @ VU Amsterdam.
 The paper replicated is:"Graph Neural Networks for Decentralized Multi-Robot Path Planning" Qingbiao Li et al.
+|            Test 1 (Success)            |
+|:--------------------------------------:|
+![Success](example.gif)
 
 Slides from my presentation: [here](https://docs.google.com/presentation/d/1U5GJXuAFZTgo84--idJMGrxTX976u6J98tHx4gF_Jyw/edit?usp=sharing)
 ## Repository structure
