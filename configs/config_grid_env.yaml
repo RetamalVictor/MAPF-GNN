@@ -1,0 +1,11 @@
+max_time: 32
+min_time: 12
+tests_episodes: 25
+max_steps: 32
+
+board_size: [16,16]
+map_shape: [5,5]
+num_agents: 4
+obstacles: 6
+sensing_range: 6
+

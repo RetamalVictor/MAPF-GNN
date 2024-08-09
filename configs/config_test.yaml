@@ -1,0 +1,6 @@
+num_agents: 2
+board_size: [16]
+max_time: 23
+min_time: 16
+sensing_range: 6
+pad: 3
