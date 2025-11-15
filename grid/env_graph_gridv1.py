@@ -42,6 +42,11 @@ class GraphEnv(gym.Env):
         self.board_size = self.config["board_size"][0]
         if obstacles is not None:
             self.obstacles = obstacles
+            # Cache obstacle positions as a set for O(1) collision checks
+            self._obstacle_set = set(map(tuple, obstacles))
+        else:
+            self.obstacles = None
+            self._obstacle_set = set()
         self.goal = goal
         self.board = np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -312,13 +317,14 @@ class GraphEnv(gym.Env):
                     self.positionY[agent_id] = self.positionY_temp[agent_id]
 
     def check_collision_obstacle(self):
-        ck = {
-            str((self.obstacles[i][0], self.obstacles[i][1])): i
-            for i in range(len(self.obstacles))
-        }
+        """
+        Check for agent-obstacle collisions and revert positions.
+        Uses cached obstacle set for O(1) lookups.
+        """
+        # Check each agent against obstacles using cached set
         for i in range(len(self.positionX)):
-            hash = str((self.positionX[i], self.positionY[i]))
-            if hash in ck:
+            agent_pos = (self.positionX[i], self.positionY[i])
+            if agent_pos in self._obstacle_set:
                 self.positionX[i] = self.positionX_temp[i]
                 self.positionY[i] = self.positionY_temp[i]
 
