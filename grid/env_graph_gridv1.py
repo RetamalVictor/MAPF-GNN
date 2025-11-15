@@ -1,8 +1,8 @@
 from copy import copy
 import numpy as np
 import matplotlib.pyplot as plt
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from matplotlib import cm, colors
 
 

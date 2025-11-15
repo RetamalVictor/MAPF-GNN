@@ -6,7 +6,7 @@ scipy>=1.7.0
 pyyaml>=5.4.0
 matplotlib>=3.3.0
 tqdm>=4.62.0
-gym>=0.21.0
+gymnasium>=0.29.0  # Maintained replacement for deprecated gym
 networkx>=2.6.0
 
 # Conflict-Based Search dependencies (if available on PyPI)
