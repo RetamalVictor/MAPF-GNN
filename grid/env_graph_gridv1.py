@@ -143,10 +143,18 @@ class GraphEnv(gym.Env):
         self.adj_matrix[self.adj_matrix != 0] = 1
 
     def computeMetrics(self):
-        last_state = np.array([self.positionX, self.positionY]).T
+        """
+        Compute success rate (fraction of agents at their goals) and flow time.
 
-        success = last_state[last_state == self.goal]
-        success_rate = len(success) / 2
+        Returns:
+            success_rate: float between 0 and 1 (fraction of agents at goal)
+            flow_time: int total time steps (penalized if not all agents reach goals)
+        """
+        positions = np.array([self.positionX, self.positionY]).T
+
+        # Check which agents have reached their assigned goals
+        agents_at_goal = np.all(positions == self.goal, axis=1)
+        success_rate = np.sum(agents_at_goal) / self.nb_agents
 
         flow_time = self.computeFlowTime()
 
