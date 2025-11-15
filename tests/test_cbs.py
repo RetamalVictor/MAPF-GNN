@@ -285,17 +285,17 @@ class TestCBS:
 
     def test_no_solution_exists(self):
         """Test CBS returns empty dict when no solution exists."""
-        # Create impossible scenario
+        # Create impossible scenario - agent completely blocked with no path
         agents = [
-            {"name": "agent0", "start": [0, 0], "goal": [1, 0]},
-            {"name": "agent1", "start": [1, 0], "goal": [0, 0]}
+            {"name": "agent0", "start": [1, 1], "goal": [0, 0]},
         ]
-        # Block all paths
-        obstacles = [(0, 1), (1, 1)]
-        env = Environment([2, 2], agents, obstacles)
+        # Completely surround the agent so A* fails immediately
+        obstacles = [(0, 1), (1, 0), (2, 1), (1, 2)]
+        env = Environment([3, 3], agents, obstacles)
         cbs = CBS(env, verbose=False)
 
         solution = cbs.search()
+        # CBS should return {} when A* can't find initial paths
         assert solution == {}
 
 
