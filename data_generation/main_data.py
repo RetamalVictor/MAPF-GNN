@@ -4,17 +4,17 @@ from record import record_env
 
 
 if __name__ == "__main__":
-    cases = 5  # Small test run
+    cases = 1000  # Full dataset
     config = {
-        "num_agents": 3,  # Fewer agents for quick test
-        "map_shape": [16, 16],  # Smaller grid for faster solving
-        "nb_agents": 3,
-        "nb_obstacles": 4,
+        "num_agents": 5,
+        "map_shape": [28, 28],
+        "nb_agents": 5,
+        "nb_obstacles": 8,
         "sensor_range": 4,
-        "board_size": [16, 16],
-        "max_time": 20,
-        "min_time": 8,  # min time the tray should go from start to goal
-        "path": "dataset/test_3_4_16/train",  # Test dataset path
+        "board_size": [28, 28],
+        "max_time": 32,
+        "min_time": 9,  # min time the tray should go from start to goal
+        "path": "dataset/5_8_28/train",
     }
 
     for path in [config["path"]]:
