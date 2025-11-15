@@ -253,9 +253,23 @@ Models are saved to `trained_models/{exp_name}/`
 
 ### Run Inference on Trained Model
 
+Use one of the pretrained models:
+
 ```bash
-uv run python example.py --config configs/config_gnn.yaml --model trained_models/gnn_k3/best_model.pth
+# Using GNN with 3-hop filters (recommended)
+uv run python example.py --config configs/config_gnn.yaml --model trained_models/gnn_k3/model.pt
+
+# Or try other models:
+# uv run python example.py --model trained_models/baseline/model.pt
+# uv run python example.py --model trained_models/gnn_k2/model.pt
+# uv run python example.py --model trained_models/gnn_msg_k3/model.pt
 ```
+
+**Available pretrained models:**
+- `baseline/model.pt` - CNN + MLP baseline (138KB)
+- `gnn_k2/model.pt` - GNN with 2-hop filters (193KB)
+- `gnn_k3/model.pt` - GNN with 3-hop filters (225KB)
+- `gnn_msg_k3/model.pt` - GNN with message passing (257KB)
 
 ### Evaluate Model Performance
 
@@ -268,7 +282,7 @@ import torch
 
 # Load model
 model = GNNFramework(config)
-model.load_state_dict(torch.load('trained_models/gnn_k3/best_model.pth'))
+model.load_state_dict(torch.load('trained_models/gnn_k3/model.pt'))
 model.eval()
 
 # Load test data
