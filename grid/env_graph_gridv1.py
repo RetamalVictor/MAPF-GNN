@@ -432,32 +432,36 @@ class GraphEnv(gym.Env):
                 color="red",
             )
         # Printing env stuff
-        plt.axis([-2, self.board_size + 5, -2, self.board_size + 5])
+        plt.axis([-0.5, self.board_size - 0.5, -0.5, self.board_size - 0.5])
+        # Draw grid border
         plt.plot(
-            [-1, self.board_size],
-            [
-                -1,
-                -1,
-            ],
+            [-0.5, self.board_size - 0.5],
+            [-0.5, -0.5],
             color="black",
+            linewidth=2
         )
         plt.plot(
-            [
-                -1,
-                -1,
-            ],
-            [self.board_size, -1],
+            [-0.5, -0.5],
+            [self.board_size - 0.5, -0.5],
             color="black",
+            linewidth=2
         )
         plt.plot(
-            [-1, self.board_size], [self.board_size, self.board_size], color="black"
+            [-0.5, self.board_size - 0.5],
+            [self.board_size - 0.5, self.board_size - 0.5],
+            color="black",
+            linewidth=2
         )
         plt.plot(
-            [self.board_size, self.board_size], [self.board_size, -1], color="black"
+            [self.board_size - 0.5, self.board_size - 0.5],
+            [self.board_size - 0.5, -0.5],
+            color="black",
+            linewidth=2
         )
-        plt.pause(0.1)
-        plt.clf()
-        plt.axis("off")
+        # Don't clear the plot - let the caller control the display
+        # plt.pause(0.1)  # Removed - let caller control timing
+        # plt.clf()       # Removed - don't clear the plot!
+        # plt.axis("off") # Removed - already set at the beginning
 
 
 ########## utils ##########
