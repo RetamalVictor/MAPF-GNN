@@ -8,12 +8,11 @@ import sys
 import os
 from pathlib import Path
 import yaml
-import torch
 import argparse
 import numpy as np
 from typing import Dict, List, Tuple, Optional
 
-sys.path.append("")
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cbs.cbs import Environment, CBS
 
 

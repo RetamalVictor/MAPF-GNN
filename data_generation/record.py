@@ -1,8 +1,7 @@
 import sys
-
-sys.path.append(r"C:\Users\victo\Desktop\VU master\MLGP\Extra")
-
 import os
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import yaml
 import numpy as np
 from grid.env_graph_gridv1 import GraphEnv
@@ -43,7 +42,7 @@ def record_env(path, config):
 
     for i in range(len(cases) - 1):
         trayectory = np.load(
-            os.path.join(path, rf"case_{i}\trajectory.npy"), allow_pickle=True
+            os.path.join(path, f"case_{i}", "trajectory.npy"), allow_pickle=True
         )
         t[i] = trayectory.shape[1]
 
@@ -60,10 +59,10 @@ def record_env(path, config):
     print("Recording states...")
     for timestep in range(len(cases) - 1):
         agent_nb = trayectory.shape[0]
-        env = make_env(os.path.join(path, rf"case_{timestep}"), config)
+        env = make_env(os.path.join(path, f"case_{timestep}"), config)
         # mx = env.min_time
         trayectory = np.load(
-            os.path.join(path, rf"case_{timestep}\trajectory.npy"), allow_pickle=True
+            os.path.join(path, f"case_{timestep}", "trajectory.npy"), allow_pickle=True
         )
         trayectory = trayectory[:, 1:]
         recordings = np.zeros(
@@ -88,10 +87,10 @@ def record_env(path, config):
         recordings[i, :, :, :, :] = obs["fov"]
         adj_record[i, :, :, :] = obs["adj_matrix"]
 
-        np.save(os.path.join(path, rf"case_{timestep}\states.npy"), recordings)
-        np.save(os.path.join(path, rf"case_{timestep}\gso.npy"), adj_record)
+        np.save(os.path.join(path, f"case_{timestep}", "states.npy"), recordings)
+        np.save(os.path.join(path, f"case_{timestep}", "gso.npy"), adj_record)
         np.save(
-            os.path.join(path, rf"case_{timestep}\trajectory_record.npy"), trayectory
+            os.path.join(path, f"case_{timestep}", "trajectory_record.npy"), trayectory
         )
         if timestep % 25 == 0:
             print(f"Recorded -- [{timestep}/{len(cases)}]")
