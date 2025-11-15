@@ -1,10 +1,7 @@
-import sys
-
-sys.path.append(r"configs")
-sys.path.append(r"models")
 import yaml
 import argparse
 import numpy as np
+from pathlib import Path
 
 import torch
 from torch import nn
@@ -38,7 +35,18 @@ if __name__ == "__main__":
 
     model = Network(config)
     model.to(config["device"])
-    model.load_state_dict(torch.load(rf"{exp_name}\model.pt"))
+
+    # Load model from trained_models directory or results directory
+    model_path = Path("trained_models") / exp_name / "model.pt"
+    if not model_path.exists():
+        model_path = Path("results") / exp_name / "model.pt"
+
+    if model_path.exists():
+        model.load_state_dict(torch.load(model_path, map_location=config["device"]))
+        print(f"Loaded model from {model_path}")
+    else:
+        print(f"Warning: No model found at {model_path}")
+
     model.eval()
     for episode in range(tests_episodes):
         obstacles = create_obstacles(config["board_size"], config["obstacles"])

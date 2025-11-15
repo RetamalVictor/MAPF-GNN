@@ -1,21 +1,9 @@
 from copy import copy
-from pprint import pprint
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.linalg import sqrtm
-from scipy.special import softmax
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 from matplotlib import cm, colors
-
-
-class GoalWrapper:
-    def __init__(self, env, trayectories):
-        self.trayectories = trayectories
-        self.env = env
-
-    def step(self, actions, emb):
-        obs, _, terminated, info = self.env.step(actions, emb)
 
 
 class GraphEnv(gym.Env):
@@ -42,6 +30,11 @@ class GraphEnv(gym.Env):
         self.board_size = self.config["board_size"][0]
         if obstacles is not None:
             self.obstacles = obstacles
+            # Cache obstacle positions as a set for O(1) collision checks
+            self._obstacle_set = set(map(tuple, obstacles))
+        else:
+            self.obstacles = None
+            self._obstacle_set = set()
         self.goal = goal
         self.board = np.zeros((self.board_size, self.board_size))
         self.pad = pad
@@ -63,7 +56,6 @@ class GraphEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-15, high=15, shape=((self.obs_shape,)), dtype=np.float32
         )
-        self.headings = None
         self.embedding = np.ones(self.nb_agents)
         norm = colors.Normalize(vmin=0.0, vmax=1.4, clip=True)
         self.mapper = cm.ScalarMappable(norm=norm, cmap=cm.inferno)
@@ -98,20 +90,16 @@ class GraphEnv(gym.Env):
             )
 
         self.goal_paded = self.goal + self.pad
-        self.headings = np.random.uniform(-3.14, 3.14, size=(self.nb_agents))
         self.embedding = np.ones(self.nb_agents).reshape((self.nb_agents, 1))
-        self.reached_goal = np.zeros(self.nb_agents)
         self._computeDistance()
         return self.getObservations()
 
     def getObservations(self):
+        """Get observations for all agents."""
         obs = {
-            # "positionX": self.positionX,
-            # "positionY": self.positionY,
-            # "headings": self.headings,
             "board": self.updateBoardGoal(),
-            "fov": self.preprocessObs(),
-            "adj_matrix": self.adj_matrix,
+            "fov": self.preprocessObs(),  # Main input to model (5x5 FOV per agent)
+            "adj_matrix": self.adj_matrix,  # For GNN communication
             "distances": self.distance_matrix,
             "embeddings": self.embedding,
         }
@@ -127,26 +115,39 @@ class GraphEnv(gym.Env):
         return np.array([self.positionX, self.positionY]).T
 
     def _computeDistance(self):
-        # Create Matrices from positions and heading
-        X1, XT = np.meshgrid(self.positionX, self.positionX)
-        Y1, YT = np.meshgrid(self.positionY, self.positionY)
+        """
+        Compute distance matrix and adjacency matrix using vectorized operations.
+        Optimized to use broadcasting instead of meshgrid for memory efficiency.
+        """
+        # Use broadcasting for efficient distance computation
+        # Shape: (n_agents, 1) - (1, n_agents) = (n_agents, n_agents)
+        positions = np.stack([self.positionX, self.positionY], axis=1)
 
-        # Calculate distance matrix
-        D_ij_x = X1 - XT
-        D_ij_y = Y1 - YT
-        D_ij = np.sqrt(np.multiply(D_ij_x, D_ij_x) + np.multiply(D_ij_y, D_ij_y))
+        # Compute pairwise distances using broadcasting
+        diff = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+        D_ij = np.sqrt(np.sum(diff * diff, axis=2))
+
+        # Apply sensing range threshold
         D_ij[D_ij >= self.sensing_range] = 0
 
         self.distance_matrix = D_ij
-        # Get only closest 4
+        # Get only closest 4 neighbors
         self.adj_matrix = self._computeClosest(D_ij)
         self.adj_matrix[self.adj_matrix != 0] = 1
 
     def computeMetrics(self):
-        last_state = np.array([self.positionX, self.positionY]).T
+        """
+        Compute success rate (fraction of agents at their goals) and flow time.
 
-        success = last_state[last_state == self.goal]
-        success_rate = len(success) / 2
+        Returns:
+            success_rate: float between 0 and 1 (fraction of agents at goal)
+            flow_time: int total time steps (penalized if not all agents reach goals)
+        """
+        positions = np.array([self.positionX, self.positionY]).T
+
+        # Check which agents have reached their assigned goals
+        agents_at_goal = np.all(positions == self.goal, axis=1)
+        success_rate = np.sum(agents_at_goal) / self.nb_agents
 
         flow_time = self.computeFlowTime()
 
@@ -210,10 +211,6 @@ class GraphEnv(gym.Env):
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
-        # print(self.board)
-        # self.positionX += actions["vx"]
-        # self.positionY += actions["vy"]
-        # self.headings  += actions["headings"]
 
     def _updateEmbedding(self, H):
         self.embedding = H
@@ -284,29 +281,34 @@ class GraphEnv(gym.Env):
 
     def check_collisions(self):
         """
-        Iterate over X:
-        if 2 equal, check their Y:
-            If equal, revert to position in temp
+        Check for agent-agent collisions and revert ALL colliding agents to previous positions.
+        Handles cases where 3+ agents try to move to the same cell.
         """
-        ck = {}
+        position_map = {}
+
+        # Group agents by their current position
         for i in range(len(self.positionX)):
-            hash = str((self.positionX[i], self.positionY[i]))
-            if hash in ck:
-                self.positionX[i] = self.positionX_temp[i]
-                self.positionY[i] = self.positionY_temp[i]
-                self.positionX[int(ck[hash])] = self.positionX_temp[int(ck[hash])]
-                self.positionY[int(ck[hash])] = self.positionY_temp[int(ck[hash])]
-                continue
-            ck[hash] = i
+            pos_key = (self.positionX[i], self.positionY[i])
+            if pos_key not in position_map:
+                position_map[pos_key] = []
+            position_map[pos_key].append(i)
+
+        # Revert all agents involved in collisions (2 or more agents at same position)
+        for pos_key, agent_ids in position_map.items():
+            if len(agent_ids) > 1:
+                for agent_id in agent_ids:
+                    self.positionX[agent_id] = self.positionX_temp[agent_id]
+                    self.positionY[agent_id] = self.positionY_temp[agent_id]
 
     def check_collision_obstacle(self):
-        ck = {
-            str((self.obstacles[i][0], self.obstacles[i][1])): i
-            for i in range(len(self.obstacles))
-        }
+        """
+        Check for agent-obstacle collisions and revert positions.
+        Uses cached obstacle set for O(1) lookups.
+        """
+        # Check each agent against obstacles using cached set
         for i in range(len(self.positionX)):
-            hash = str((self.positionX[i], self.positionY[i]))
-            if hash in ck:
+            agent_pos = (self.positionX[i], self.positionY[i])
+            if agent_pos in self._obstacle_set:
                 self.positionX[i] = self.positionX_temp[i]
                 self.positionY[i] = self.positionY_temp[i]
 
@@ -430,54 +432,103 @@ class GraphEnv(gym.Env):
                 color="red",
             )
         # Printing env stuff
-        plt.axis([-2, self.board_size + 5, -2, self.board_size + 5])
+        plt.axis([-0.5, self.board_size - 0.5, -0.5, self.board_size - 0.5])
+        # Draw grid border
         plt.plot(
-            [-1, self.board_size],
-            [
-                -1,
-                -1,
-            ],
+            [-0.5, self.board_size - 0.5],
+            [-0.5, -0.5],
             color="black",
+            linewidth=2
         )
         plt.plot(
-            [
-                -1,
-                -1,
-            ],
-            [self.board_size, -1],
+            [-0.5, -0.5],
+            [self.board_size - 0.5, -0.5],
             color="black",
+            linewidth=2
         )
         plt.plot(
-            [-1, self.board_size], [self.board_size, self.board_size], color="black"
+            [-0.5, self.board_size - 0.5],
+            [self.board_size - 0.5, self.board_size - 0.5],
+            color="black",
+            linewidth=2
         )
         plt.plot(
-            [self.board_size, self.board_size], [self.board_size, -1], color="black"
+            [self.board_size - 0.5, self.board_size - 0.5],
+            [self.board_size - 0.5, -0.5],
+            color="black",
+            linewidth=2
         )
-        plt.pause(0.1)
-        plt.clf()
-        plt.axis("off")
+        # Don't clear the plot - let the caller control the display
+        # plt.pause(0.1)  # Removed - let caller control timing
+        # plt.clf()       # Removed - don't clear the plot!
+        # plt.axis("off") # Removed - already set at the beginning
 
 
 ########## utils ##########
 def create_goals(board_size, num_agents, obstacles=None):
-    avilable_pos_x = np.arange(board_size[0])
-    avilable_pos_y = np.arange(board_size[1])
-    if obstacles is not None:
-        mask_x = np.isin(avilable_pos_x, obstacles[:, 0])
-        mask_y = np.isin(avilable_pos_y, obstacles[:, 1])
-        avilable_pos_x = avilable_pos_x[~mask_x]
-        avilable_pos_y = avilable_pos_y[~mask_y]
-    goals_x = np.random.choice(avilable_pos_x, size=num_agents, replace=False)
-    goals_y = np.random.choice(avilable_pos_y, size=num_agents, replace=False)
-    goals = np.array([goals_x, goals_y]).T
+    """
+    Create unique goal positions for each agent, avoiding obstacles.
+    Uses vectorized operations for efficiency.
+
+    Args:
+        board_size: tuple (width, height) of the board
+        num_agents: number of agents needing goals
+        obstacles: numpy array of obstacle positions
+
+    Returns:
+        goals: numpy array of shape (num_agents, 2) with unique goal positions
+    """
+    # Create meshgrid of all positions
+    x_coords, y_coords = np.meshgrid(np.arange(board_size[0]), np.arange(board_size[1]))
+    all_positions = np.column_stack([x_coords.ravel(), y_coords.ravel()])
+
+    if obstacles is not None and len(obstacles) > 0:
+        # Create a boolean mask for valid (non-obstacle) positions
+        # Using broadcasting to check all positions against all obstacles at once
+        is_valid = ~np.any(
+            (all_positions[:, None, :] == obstacles[None, :, :]).all(axis=2),
+            axis=1
+        )
+        valid_positions = all_positions[is_valid]
+    else:
+        valid_positions = all_positions
+
+    # Check if we have enough valid positions
+    if len(valid_positions) < num_agents:
+        raise ValueError(f"Not enough valid positions ({len(valid_positions)}) for {num_agents} agents")
+
+    # Randomly select unique positions
+    selected_indices = np.random.choice(len(valid_positions), size=num_agents, replace=False)
+    goals = valid_positions[selected_indices]
+
     return goals
 
 
 def create_obstacles(board_size, nb_obstacles):
-    avilable_pos = np.arange(board_size[0])
-    obstacles_x = np.random.choice(avilable_pos, size=nb_obstacles, replace=False)
-    obstacles_y = np.random.choice(avilable_pos, size=nb_obstacles, replace=False)
-    obstacles = np.array([obstacles_x, obstacles_y]).T
+    """
+    Create unique obstacle positions on the board.
+    Uses vectorized operations for efficiency.
+
+    Args:
+        board_size: tuple (width, height) of the board
+        nb_obstacles: number of obstacles to place
+
+    Returns:
+        obstacles: numpy array of shape (nb_obstacles, 2) with unique positions
+    """
+    # Create all possible positions
+    x_coords, y_coords = np.meshgrid(np.arange(board_size[0]), np.arange(board_size[1]))
+    all_positions = np.column_stack([x_coords.ravel(), y_coords.ravel()])
+
+    # Check if we have enough positions
+    max_obstacles = len(all_positions)
+    if nb_obstacles > max_obstacles:
+        raise ValueError(f"Cannot place {nb_obstacles} obstacles on {board_size[0]}x{board_size[1]} board")
+
+    # Randomly select unique positions
+    selected_indices = np.random.choice(len(all_positions), size=nb_obstacles, replace=False)
+    obstacles = all_positions[selected_indices]
+
     return obstacles
 
 

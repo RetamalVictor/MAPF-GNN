@@ -1,3 +1,4 @@
+from typing import Dict, Any
 import torch
 import torch.nn as nn
 from networks.utils_weights import weights_init
@@ -6,9 +7,20 @@ from copy import copy
 
 
 class Network(nn.Module):
-    def __init__(self, config):
+    """Graph Neural Network for decentralized multi-agent path planning.
+
+    This model implements a 3-stage architecture:
+    1. CNN encoder to process each agent's local field-of-view
+    2. Graph Convolutional Network to enable inter-agent communication
+    3. MLP policy head to output action probabilities
+
+    Args:
+        config: Dictionary containing model configuration parameters
+    """
+
+    def __init__(self, config: Dict[str, Any]):
         super().__init__()
-        self.config = config  # json file
+        self.config = config
         self.S = None
         self.num_agents = self.config["num_agents"]
         self.map_shape = self.config["map_shape"]  # FOV
@@ -128,10 +140,17 @@ class Network(nn.Module):
         self.actionMLP = nn.Sequential(*mlp_action)
         self.apply(weights_init)
 
-    def forward(self, states, gso):
-        """
-        states.shape = (batch x agent  x channels x dimX x dimY)
-        gsos.shape = (batch x agent x agent)
+    def forward(self, states: torch.Tensor, gso: torch.Tensor) -> torch.Tensor:
+        """Forward pass through the GNN model.
+
+        Args:
+            states: Agent observations [batch_size, num_agents, channels, height, width]
+                    - channel 0: obstacles and other agents
+                    - channel 1: goal locations
+            gso: Graph shift operator (adjacency matrix) [batch_size, num_agents, num_agents]
+
+        Returns:
+            Action logits for each agent [batch_size, num_agents, num_actions]
         """
         batch_size = states.shape[0]
         # This vector is only needed for the GNN
