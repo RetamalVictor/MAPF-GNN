@@ -1,21 +1,9 @@
 from copy import copy
-from pprint import pprint
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy.linalg import sqrtm
-from scipy.special import softmax
 import gym
 from gym import spaces
 from matplotlib import cm, colors
-
-
-class GoalWrapper:
-    def __init__(self, env, trayectories):
-        self.trayectories = trayectories
-        self.env = env
-
-    def step(self, actions, emb):
-        obs, _, terminated, info = self.env.step(actions, emb)
 
 
 class GraphEnv(gym.Env):
@@ -68,7 +56,6 @@ class GraphEnv(gym.Env):
         self.observation_space = spaces.Box(
             low=-15, high=15, shape=((self.obs_shape,)), dtype=np.float32
         )
-        self.headings = None
         self.embedding = np.ones(self.nb_agents)
         norm = colors.Normalize(vmin=0.0, vmax=1.4, clip=True)
         self.mapper = cm.ScalarMappable(norm=norm, cmap=cm.inferno)
@@ -103,20 +90,16 @@ class GraphEnv(gym.Env):
             )
 
         self.goal_paded = self.goal + self.pad
-        self.headings = np.random.uniform(-3.14, 3.14, size=(self.nb_agents))
         self.embedding = np.ones(self.nb_agents).reshape((self.nb_agents, 1))
-        self.reached_goal = np.zeros(self.nb_agents)
         self._computeDistance()
         return self.getObservations()
 
     def getObservations(self):
+        """Get observations for all agents."""
         obs = {
-            # "positionX": self.positionX,
-            # "positionY": self.positionY,
-            # "headings": self.headings,
             "board": self.updateBoardGoal(),
-            "fov": self.preprocessObs(),
-            "adj_matrix": self.adj_matrix,
+            "fov": self.preprocessObs(),  # Main input to model (5x5 FOV per agent)
+            "adj_matrix": self.adj_matrix,  # For GNN communication
             "distances": self.distance_matrix,
             "embeddings": self.embedding,
         }
@@ -223,10 +206,6 @@ class GraphEnv(gym.Env):
         self.check_boundary()
         self.check_collisions()
         self.updateBoard()
-        # print(self.board)
-        # self.positionX += actions["vx"]
-        # self.positionY += actions["vy"]
-        # self.headings  += actions["headings"]
 
     def _updateEmbedding(self, H):
         self.embedding = H
