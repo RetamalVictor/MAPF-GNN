@@ -317,7 +317,7 @@ class GraphEnv(gym.Env):
         return f"Game Board:\n{self.board}"
 
     def render(self, agentId=0, printNeigh=False, printFOV=False, mode="plot"):
-
+        plt.clf()  # Clear the current figure
         plt.axis("off")
         if agentId is not None:
             column = np.where(self.adj_matrix[agentId])
@@ -458,10 +458,7 @@ class GraphEnv(gym.Env):
             color="black",
             linewidth=2
         )
-        # Don't clear the plot - let the caller control the display
-        # plt.pause(0.1)  # Removed - let caller control timing
-        # plt.clf()       # Removed - don't clear the plot!
-        # plt.axis("off") # Removed - already set at the beginning
+        plt.pause(0.001)  # Brief pause to update the display
 
 
 ########## utils ##########

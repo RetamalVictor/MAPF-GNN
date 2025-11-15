@@ -2,6 +2,7 @@ import yaml
 import argparse
 import numpy as np
 from pathlib import Path
+import matplotlib.pyplot as plt
 
 import torch
 from torch import nn
@@ -48,6 +49,10 @@ if __name__ == "__main__":
         print(f"Warning: No model found at {model_path}")
 
     model.eval()
+
+    # Enable interactive plotting
+    plt.ion()
+
     for episode in range(tests_episodes):
         obstacles = create_obstacles(config["board_size"], config["obstacles"])
         goals = create_goals(config["board_size"], config["num_agents"], obstacles)
