@@ -284,20 +284,24 @@ class GraphEnv(gym.Env):
 
     def check_collisions(self):
         """
-        Iterate over X:
-        if 2 equal, check their Y:
-            If equal, revert to position in temp
+        Check for agent-agent collisions and revert ALL colliding agents to previous positions.
+        Handles cases where 3+ agents try to move to the same cell.
         """
-        ck = {}
+        position_map = {}
+
+        # Group agents by their current position
         for i in range(len(self.positionX)):
-            hash = str((self.positionX[i], self.positionY[i]))
-            if hash in ck:
-                self.positionX[i] = self.positionX_temp[i]
-                self.positionY[i] = self.positionY_temp[i]
-                self.positionX[int(ck[hash])] = self.positionX_temp[int(ck[hash])]
-                self.positionY[int(ck[hash])] = self.positionY_temp[int(ck[hash])]
-                continue
-            ck[hash] = i
+            pos_key = (self.positionX[i], self.positionY[i])
+            if pos_key not in position_map:
+                position_map[pos_key] = []
+            position_map[pos_key].append(i)
+
+        # Revert all agents involved in collisions (2 or more agents at same position)
+        for pos_key, agent_ids in position_map.items():
+            if len(agent_ids) > 1:
+                for agent_id in agent_ids:
+                    self.positionX[agent_id] = self.positionX_temp[agent_id]
+                    self.positionY[agent_id] = self.positionY_temp[agent_id]
 
     def check_collision_obstacle(self):
         ck = {
