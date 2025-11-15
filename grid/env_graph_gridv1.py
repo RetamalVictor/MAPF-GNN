@@ -511,10 +511,30 @@ def create_goals(board_size, num_agents, obstacles=None):
 
 
 def create_obstacles(board_size, nb_obstacles):
-    avilable_pos = np.arange(board_size[0])
-    obstacles_x = np.random.choice(avilable_pos, size=nb_obstacles, replace=False)
-    obstacles_y = np.random.choice(avilable_pos, size=nb_obstacles, replace=False)
-    obstacles = np.array([obstacles_x, obstacles_y]).T
+    """
+    Create unique obstacle positions on the board.
+    Uses vectorized operations for efficiency.
+
+    Args:
+        board_size: tuple (width, height) of the board
+        nb_obstacles: number of obstacles to place
+
+    Returns:
+        obstacles: numpy array of shape (nb_obstacles, 2) with unique positions
+    """
+    # Create all possible positions
+    x_coords, y_coords = np.meshgrid(np.arange(board_size[0]), np.arange(board_size[1]))
+    all_positions = np.column_stack([x_coords.ravel(), y_coords.ravel()])
+
+    # Check if we have enough positions
+    max_obstacles = len(all_positions)
+    if nb_obstacles > max_obstacles:
+        raise ValueError(f"Cannot place {nb_obstacles} obstacles on {board_size[0]}x{board_size[1]} board")
+
+    # Randomly select unique positions
+    selected_indices = np.random.choice(len(all_positions), size=nb_obstacles, replace=False)
+    obstacles = all_positions[selected_indices]
+
     return obstacles
 
 
