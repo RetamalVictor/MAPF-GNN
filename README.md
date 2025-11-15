@@ -74,19 +74,43 @@ pip install -r requirements.txt
 
 ## Quick Start
 
-### Run a Demo
+### Run a Simple Demo
 
-See GNN-based multi-agent planning in action:
+See GNN-based multi-agent planning in action with a single episode:
 
 ```bash
 uv run python example.py
 ```
 
-This runs a demonstration with:
-- 5 agents on a 16×16 grid
-- 8 obstacles
-- GCN-based policy network
+This runs a single demonstration episode with:
 - Real-time visualization
+- Step-by-step agent movement
+- Success metrics displayed
+
+### Evaluate Model Performance
+
+Run comprehensive evaluation with detailed statistics:
+
+```bash
+# Quick evaluation (no visualization, 100 episodes from config)
+uv run python evaluate.py
+
+# With visualization
+uv run python evaluate.py --render
+
+# Custom episodes with benchmarking
+uv run python evaluate.py --episodes 50 --benchmark
+
+# Save results to JSON
+uv run python evaluate.py --episodes 100 --save-results results/evaluation.json
+```
+
+**Key features:**
+- Color-coded terminal output
+- Success rate, flow time, and performance metrics
+- Optional visualization (--render)
+- Benchmarking mode with detailed per-episode stats
+- JSON export for analysis
 
 ### Visualize CBS Algorithm
 
@@ -156,30 +180,6 @@ Each trajectory file contains:
 - Optimal paths computed by CBS
 - Local observations at each timestep
 - Actions taken by each agent
-
-### Visualize Dataset Samples
-
-To visualize trajectories from your dataset:
-
-```python
-from data_generation.trajectory_parser import TrajectoryParser
-from grid.env_graph_gridv1 import GraphEnv
-import matplotlib.pyplot as plt
-
-# Load a trajectory
-parser = TrajectoryParser('dataset/5_8_28/train')
-trajectory = parser.load_trajectory(0)
-
-# Create environment and visualize
-env = GraphEnv(config={
-    'board_size': [28, 28],
-    'num_agents': 5,
-    # ... other config
-})
-env.reset()
-env.render()
-plt.show()
-```
 
 ---
 
@@ -251,49 +251,115 @@ Models are saved to `trained_models/{exp_name}/`
 
 ## Inference & Evaluation
 
-### Run Inference on Trained Model
+### Professional Evaluation Tool
 
-Use one of the pretrained models:
+The `evaluate.py` script provides comprehensive model evaluation with detailed metrics:
 
 ```bash
-# Using GNN with 3-hop filters (recommended)
-uv run python example.py --config configs/config_gnn.yaml --model trained_models/gnn_k3/model.pt
+# Basic evaluation
+uv run python evaluate.py
 
-# Or try other models:
-# uv run python example.py --model trained_models/baseline/model.pt
-# uv run python example.py --model trained_models/gnn_k2/model.pt
-# uv run python example.py --model trained_models/gnn_msg_k3/model.pt
+# With all options
+uv run python evaluate.py \
+  --config configs/config_gnn.yaml \
+  --model trained_models/gnn_k3/model.pt \
+  --episodes 100 \
+  --render \
+  --benchmark \
+  --save-results results/eval_$(date +%Y%m%d).json
 ```
 
-**Available pretrained models:**
+**Command-Line Options:**
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--config PATH` | Configuration file | `configs/config_gnn.yaml` |
+| `--model PATH` | Model checkpoint | From config |
+| `--episodes N` | Number of test episodes | From config (100) |
+| `--max-steps N` | Max steps per episode | From config |
+| `--render` | Enable visualization | Off |
+| `--render-delay SECONDS` | Delay between frames | 0.001 |
+| `--benchmark` | Detailed performance stats | Off |
+| `--save-results PATH` | Save to JSON file | None |
+| `--verbose` | Detailed logging | Off |
+| `--quiet` | Minimal output | Off |
+
+**Output Metrics:**
+- Complete success rate (all agents reach goals)
+- Average success rate per episode
+- Average and max flow time
+- Average steps taken
+- Inference time and FPS
+- Per-episode statistics (in benchmark mode)
+
+**Example Output:**
+```
+============================================================
+                  MAPF-GNN Model Evaluation
+============================================================
+
+Configuration:
+  Model: gnn_k3
+  Network Type: gnn
+  Device: cpu
+  Board Size: [18, 18]
+  Agents: 5
+  Obstacles: 5
+  Episodes: 100
+
+Episode   1/100: Success:  100.0% | Steps:  24 | Flow Time:  120 | Inference:   8.2ms
+Episode   2/100: Success:  100.0% | Steps:  28 | Flow Time:  140 | Inference:   9.1ms
+...
+
+============================================================
+                    Evaluation Results
+============================================================
+
+Success Metrics:
+  Complete Success: 87/100 (87.0%)
+  Avg Success Rate: 94.20% (±12.30%)
+
+Path Metrics:
+  Avg Steps Taken: 26.4 (±5.2)
+  Avg Flow Time: 132.1 (±26.0)
+  Max Flow Time: 189
+
+Performance Metrics:
+  Avg Inference Time: 8.45ms per step
+  Total Inferences: 2640
+  Inference FPS: 118.3 steps/second
+```
+
+### Available Pretrained Models
+
+**Models:**
 - `baseline/model.pt` - CNN + MLP baseline (138KB)
 - `gnn_k2/model.pt` - GNN with 2-hop filters (193KB)
-- `gnn_k3/model.pt` - GNN with 3-hop filters (225KB)
+- `gnn_k3/model.pt` - GNN with 3-hop filters (225KB) **← Recommended**
 - `gnn_msg_k3/model.pt` - GNN with message passing (257KB)
 
-### Evaluate Model Performance
-
-Test your trained model on a held-out test set:
-
-```python
-from models.framework_gnn import GNNFramework
-from data_loader import load_test_data
-import torch
-
-# Load model
-model = GNNFramework(config)
-model.load_state_dict(torch.load('trained_models/gnn_k3/model.pt'))
-model.eval()
-
-# Load test data
-test_loader = load_test_data('dataset/5_8_28/test')
-
-# Evaluate
-metrics = model.evaluate(test_loader, num_episodes=100)
-print(f"Success Rate: {metrics['success_rate']:.2%}")
-print(f"Collision Rate: {metrics['collision_rate']:.2%}")
-print(f"Avg Path Length: {metrics['avg_path_length']:.1f}")
+**Quick Model Comparison:**
+```bash
+# Evaluate all models
+for model in baseline gnn_k2 gnn_k3 gnn_msg_k3; do
+  echo "Evaluating $model..."
+  uv run python evaluate.py \
+    --model trained_models/$model/model.pt \
+    --episodes 50 \
+    --quiet \
+    --save-results results/${model}_eval.json
+done
 ```
+
+### Simple Demo
+
+For a quick visual demonstration with a single episode:
+
+```bash
+uv run python example.py
+```
+
+This shows one complete episode with visualization and basic metrics.
 
 ---
 
@@ -326,7 +392,8 @@ MAPF-GNN/
 ├── tests/                     # Unit tests
 │   ├── test_cbs.py           # CBS algorithm tests
 │   ├── test_env.py           # Environment tests
-│   └── test_cbs_performance.py # Performance tests
+│   ├── test_cbs_performance.py # Performance tests
+│   └── test_data_pipeline.py # Data generation tests
 │
 ├── benchmarks/                # Performance benchmarks
 │   ├── benchmark_performance.py
@@ -337,163 +404,13 @@ MAPF-GNN/
 │
 ├── trained_models/            # Saved model checkpoints
 ├── train.py                   # Training script
+├── evaluate.py                # Professional evaluation tool
 ├── example.py                 # Quick demo script
 └── data_loader.py            # Dataset loading utilities
 ```
 
 ---
 
-## Testing
-
-Run the comprehensive test suite:
-
-### Run All Tests
-
-```bash
-uv run pytest tests/ -v
-```
-
-### Run Specific Test Categories
-
-```bash
-# Test CBS algorithm
-uv run pytest tests/test_cbs.py -v
-
-# Test environment functionality
-uv run pytest tests/test_env.py -v
-
-# Test performance optimizations
-uv run pytest tests/test_cbs_performance.py -v
-```
-
-### Test Coverage
-
-The test suite includes:
-
-- **CBS Algorithm Tests** (24 tests)
-  - Path finding correctness
-  - Conflict detection and resolution
-  - Edge case handling
-  - Heap-based optimization verification
-
-- **Environment Tests** (17 tests)
-  - Agent movement and collision detection
-  - Obstacle generation and handling
-  - Field of view computation
-  - Success rate calculation
-
-- **Performance Tests** (3 tests)
-  - Scalability benchmarks
-  - Memory efficiency tests
-  - Optimization validation
-
-**Current Status:** ✅ All 44 tests passing
-
----
-
-## Benchmarks
-
-Profile system performance across different scenarios:
-
-### CBS Performance Benchmark
-
-```bash
-uv run python benchmarks/benchmark_performance.py
-```
-
-Measures CBS solver performance for:
-- Different numbers of agents (2-10)
-- Varying grid sizes (10×10 to 50×50)
-- Different obstacle densities
-
-### Scalability Benchmark
-
-```bash
-uv run python benchmarks/benchmark_scaling.py
-```
-
-Tests how performance scales with:
-- Number of agents
-- Grid complexity
-- Search depth
-
-### Sample Output
-
-```
-CBS Performance Benchmark Results:
-=====================================
-Agents: 5, Grid: 20×20, Obstacles: 15
-  - Solution found: ✓
-  - Time: 124.3ms
-  - Nodes expanded: 187
-  - Path optimality: 1.0
-
-Agents: 10, Grid: 30×30, Obstacles: 25
-  - Solution found: ✓
-  - Time: 892.5ms
-  - Nodes expanded: 1,423
-  - Path optimality: 1.0
-```
-
----
-
-## Contributing
-
-### Development Setup
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/my-feature`
-3. Install dev dependencies: `uv pip install pytest`
-4. Make your changes
-5. Run tests: `uv run pytest tests/`
-6. Commit changes: `git commit -am 'Add feature'`
-7. Push branch: `git push origin feature/my-feature`
-8. Create a Pull Request
-
-### Code Quality
-
-- All new code should include tests
-- Tests must pass before merging
-- Follow existing code style and conventions
-- Add docstrings for public functions
-
-### Continuous Integration
-
-GitHub Actions automatically:
-- Runs all tests on push/PR
-- Tests on Python 3.10 and 3.11
-- Validates code quality
-
----
-
-## Citation
-
-If you use this code in your research, please cite:
-
-```bibtex
-@article{li2020graph,
-  title={Graph neural networks for decentralized multi-robot path planning},
-  author={Li, Qingbiao and Gama, Fernando and Ribeiro, Alejandro and Prorok, Amanda},
-  journal={IEEE/RSJ International Conference on Intelligent Robots and Systems (IROS)},
-  year={2020}
-}
-```
-
----
-
-## License
-
-This project is part of a replication study for the course "Machine Learning for Graphs" @ VU Amsterdam.
-
----
-
-## Acknowledgments
-
-- Original paper authors: Qingbiao Li, Fernando Gama, Alejandro Ribeiro, Amanda Prorok
-- VU Amsterdam Machine Learning for Graphs course
-- Conflict-Based Search algorithm by Sharon et al.
-
----
 
 ## Contact
 
