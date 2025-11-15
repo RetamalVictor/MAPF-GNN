@@ -115,18 +115,23 @@ class GraphEnv(gym.Env):
         return np.array([self.positionX, self.positionY]).T
 
     def _computeDistance(self):
-        # Create Matrices from positions and heading
-        X1, XT = np.meshgrid(self.positionX, self.positionX)
-        Y1, YT = np.meshgrid(self.positionY, self.positionY)
+        """
+        Compute distance matrix and adjacency matrix using vectorized operations.
+        Optimized to use broadcasting instead of meshgrid for memory efficiency.
+        """
+        # Use broadcasting for efficient distance computation
+        # Shape: (n_agents, 1) - (1, n_agents) = (n_agents, n_agents)
+        positions = np.stack([self.positionX, self.positionY], axis=1)
 
-        # Calculate distance matrix
-        D_ij_x = X1 - XT
-        D_ij_y = Y1 - YT
-        D_ij = np.sqrt(np.multiply(D_ij_x, D_ij_x) + np.multiply(D_ij_y, D_ij_y))
+        # Compute pairwise distances using broadcasting
+        diff = positions[:, np.newaxis, :] - positions[np.newaxis, :, :]
+        D_ij = np.sqrt(np.sum(diff * diff, axis=2))
+
+        # Apply sensing range threshold
         D_ij[D_ij >= self.sensing_range] = 0
 
         self.distance_matrix = D_ij
-        # Get only closest 4
+        # Get only closest 4 neighbors
         self.adj_matrix = self._computeClosest(D_ij)
         self.adj_matrix[self.adj_matrix != 0] = 1
 
