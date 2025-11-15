@@ -472,16 +472,41 @@ class GraphEnv(gym.Env):
 
 ########## utils ##########
 def create_goals(board_size, num_agents, obstacles=None):
-    avilable_pos_x = np.arange(board_size[0])
-    avilable_pos_y = np.arange(board_size[1])
-    if obstacles is not None:
-        mask_x = np.isin(avilable_pos_x, obstacles[:, 0])
-        mask_y = np.isin(avilable_pos_y, obstacles[:, 1])
-        avilable_pos_x = avilable_pos_x[~mask_x]
-        avilable_pos_y = avilable_pos_y[~mask_y]
-    goals_x = np.random.choice(avilable_pos_x, size=num_agents, replace=False)
-    goals_y = np.random.choice(avilable_pos_y, size=num_agents, replace=False)
-    goals = np.array([goals_x, goals_y]).T
+    """
+    Create unique goal positions for each agent, avoiding obstacles.
+    Uses vectorized operations for efficiency.
+
+    Args:
+        board_size: tuple (width, height) of the board
+        num_agents: number of agents needing goals
+        obstacles: numpy array of obstacle positions
+
+    Returns:
+        goals: numpy array of shape (num_agents, 2) with unique goal positions
+    """
+    # Create meshgrid of all positions
+    x_coords, y_coords = np.meshgrid(np.arange(board_size[0]), np.arange(board_size[1]))
+    all_positions = np.column_stack([x_coords.ravel(), y_coords.ravel()])
+
+    if obstacles is not None and len(obstacles) > 0:
+        # Create a boolean mask for valid (non-obstacle) positions
+        # Using broadcasting to check all positions against all obstacles at once
+        is_valid = ~np.any(
+            (all_positions[:, None, :] == obstacles[None, :, :]).all(axis=2),
+            axis=1
+        )
+        valid_positions = all_positions[is_valid]
+    else:
+        valid_positions = all_positions
+
+    # Check if we have enough valid positions
+    if len(valid_positions) < num_agents:
+        raise ValueError(f"Not enough valid positions ({len(valid_positions)}) for {num_agents} agents")
+
+    # Randomly select unique positions
+    selected_indices = np.random.choice(len(valid_positions), size=num_agents, replace=False)
+    goals = valid_positions[selected_indices]
+
     return goals
 
 
