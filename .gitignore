@@ -1,10 +1,43 @@
-*.vscode
-*_pycache_
-*dataset
-*.pyc
-*results
-*continous/
-*other/
-*journal.md
-*testbed.py
-*.pyc
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Datasets and results
+dataset/
+results/
+continous/
+other/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# Misc
+journal.md
+testbed.py
+*.log
+.DS_Store

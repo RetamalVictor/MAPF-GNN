@@ -1,4 +1,4 @@
-exp_name: 'trained_models\gnn_k3'
+exp_name: 'gnn_k3'
 
 # CNN
 channels: [16, 16, 16]
@@ -35,7 +35,7 @@ min_time: 1
 num_workers: 3
 batch_size: 128
 train:
-    root_dir: 'dataset\5_8_28'
+    root_dir: 'dataset/5_8_28'
     mode: 'train'
     min_time: 5
     max_time_dl: 25

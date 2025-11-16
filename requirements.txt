@@ -1,0 +1,17 @@
+# Core dependencies for MAPF-GNN
+torch>=1.13.0
+torchvision>=0.14.0
+numpy>=1.21.0,<2.0.0  # Pin to <2.0 for PyTorch compatibility
+scipy>=1.7.0
+pyyaml>=5.4.0
+matplotlib>=3.3.0
+tqdm>=4.62.0
+gymnasium>=0.29.0  # Maintained replacement for deprecated gym
+networkx>=2.6.0
+
+# Conflict-Based Search dependencies (if available on PyPI)
+# cbs-mapf>=0.5
+# space-time-astar>=0.8
+
+# Note: If cbs-mapf and space-time-astar are not available via pip,
+# you may need to install them from source or use the included CBS implementation

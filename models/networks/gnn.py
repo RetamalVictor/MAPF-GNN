@@ -10,15 +10,30 @@ from copy import copy
 
 
 class GCNLayer(nn.Module):
+    """Graph Convolutional Layer implementing spectral graph convolution.
+
+    Performs K-hop aggregation using normalized adjacency matrix to enable
+    information exchange between agents in the graph.
+
+    Args:
+        n_nodes: Number of nodes (agents) in the graph
+        in_features: Input feature dimension
+        out_features: Output feature dimension
+        filter_number: Number of hop filters (K-hop aggregation)
+        bias: Whether to include bias term
+        activation: Optional activation function
+        name: Layer name for debugging
+    """
+
     def __init__(
         self,
-        n_nodes,
-        in_features,
-        out_features,
-        filter_number,
-        bias=False,
+        n_nodes: int,
+        in_features: int,
+        out_features: int,
+        filter_number: int,
+        bias: bool = False,
         activation=None,
-        name="GCN_Layer",
+        name: str = "GCN_Layer",
     ):
         super().__init__()
         self.in_features = in_features
@@ -50,31 +65,40 @@ class GCNLayer(nn.Module):
         )
         return reprString
 
-    def addGSO(self, GSO):
+    def addGSO(self, GSO: torch.Tensor):
+        """Set the graph shift operator (adjacency matrix)."""
         self.adj_matrix = GSO
 
-    def forward(self, node_feats):
-        """
-        node_feats: [batch_size, n_nodes, in_features]
-        adj_matrix: [batch_size, n_nodes, n_nodes]
+    def forward(self, node_feats: torch.Tensor) -> torch.Tensor:
+        """Forward pass through GCN layer.
+
+        Args:
+            node_feats: Node features [batch_size, n_nodes, in_features]
+
+        Returns:
+            Updated node features after graph convolution [batch_size, out_features, n_nodes]
+
+        Note:
+            The adjacency matrix must be set via addGSO() before calling forward()
         """
         self.n_nodes = node_feats.shape[2]
         batch_size = node_feats.shape[0]
-        self.adj_matrix += torch.eye(self.n_nodes)
+        # Create adjacency with self-loops (don't modify input)
+        adj_matrix = self.adj_matrix + torch.eye(self.n_nodes, device=self.adj_matrix.device)
         # Generating an empty D
-        D_mod = torch.zeros_like(self.adj_matrix)
+        D_mod = torch.zeros_like(adj_matrix)
 
         # Filling it with the total number of neigh (plus self connections)
         k = D_mod.size(1)
         for i in range(batch_size):
             D_mod[i].as_strided([k], [k + 1]).copy_(
-                self.adj_matrix[i].sum(axis=1).flatten()
+                adj_matrix[i].sum(axis=1).flatten()
             )
 
         # torch.fill_diagonal(D_mod, torch.tensor(adj_matrix.sum(axis=1)).flatten())
         D_mod_invroot = torch.pow(D_mod, -0.5)
         D_mod_invroot[D_mod_invroot == torch.inf] = 0
-        adj_matrix = D_mod_invroot @ self.adj_matrix @ D_mod_invroot
+        adj_matrix = D_mod_invroot @ adj_matrix @ D_mod_invroot
 
         # K-hops
         node_feats = node_feats.reshape([batch_size, self.in_features, self.n_nodes])
@@ -94,7 +118,7 @@ class GCNLayer(nn.Module):
         node_feats = node_feats.permute(0, 2, 1)
 
         if self.b is not None:
-            node_feats += node_feats + self.b
+            node_feats = node_feats + self.b
         # node_feats = node_feats / n_neig
         if self.activation is not None:
             node_feats = self.activation(node_feats)
@@ -203,7 +227,7 @@ class MessagePassingLayer(nn.Module):
         node_feats = node_feats + node_feats_not_shared
 
         if self.b is not None:
-            node_feats += node_feats + self.b
+            node_feats = node_feats + self.b
         # node_feats = node_feats / n_neig
         if self.activation is not None:
             node_feats = self.activation(node_feats)

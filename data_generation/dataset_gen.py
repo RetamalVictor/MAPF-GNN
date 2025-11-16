@@ -1,104 +1,127 @@
-import sys
+"""
+Dataset generation for MAPF training.
+Generates random MAPF instances and solves them using CBS.
 
-sys.path.append("")
+author: Victor Retamal
+"""
+import sys
 import os
+from pathlib import Path
 import yaml
-import torch
 import argparse
 import numpy as np
+from typing import Dict, List, Tuple, Optional
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cbs.cbs import Environment, CBS
 
-"""
-agents:
--   start: [0, 0]
-    goal: [8, 8]
-    name: agent0
--   start: [2, 7]
-    goal: [0, 0]
-    name: agent1
--   start: [6, 7]
-    goal: [0, 2]
-    name: agent3
-map:
-    dimensions: [10, 10]
-    obstacles:
-    - !!python/tuple [0, 1]
-    - !!python/tuple [2, 1]
-    - !!python/tuple [5, 5]
 
-"""
-
-
-def gen_input(dimensions: tuple[int, int], nb_obs: int, nb_agents: int) -> dict:
-
+def gen_input(
+    dimensions: Tuple[int, int],
+    nb_obstacles: int,
+    nb_agents: int,
+    max_attempts: int = 10000
+) -> Optional[Dict]:
     """
-    basic_agent = {
-        "start":[0,0],
-        "goal":[1,1],
-        "name":"agent1"
+    Generate random MAPF instance with agents and obstacles.
+
+    Args:
+        dimensions: (width, height) of the grid
+        nb_obstacles: Number of obstacles to place
+        nb_agents: Number of agents
+        max_attempts: Maximum attempts for placement before giving up
+
+    Returns:
+        Dictionary with agent and map configuration, or None if generation fails
+    """
+    input_dict = {
+        "agents": [],
+        "map": {
+            "dimensions": list(dimensions),
+            "obstacles": []
         }
-    """
+    }
 
-    input_dict = {"agents": [], "map": {"dimensions": dimensions, "obstacles": []}}
+    total_cells = dimensions[0] * dimensions[1]
+    required_cells = nb_obstacles + 2 * nb_agents  # obstacles + starts + goals
 
-    starts = []
-    goals = []
+    if required_cells > total_cells * 0.9:
+        print(f"Warning: Requesting {required_cells} positions in {total_cells} cells (>90% fill)")
+
+    # Use set for O(1) lookup
+    occupied_positions = set()
+
+    def get_random_position(exclude_set: set, max_attempts: int = 1000) -> Optional[Tuple[int, int]]:
+        """Get random position not in exclude set."""
+        # For sparse boards, use random sampling
+        if len(exclude_set) < total_cells * 0.7:
+            for _ in range(max_attempts):
+                pos = (
+                    np.random.randint(0, dimensions[0]),
+                    np.random.randint(0, dimensions[1])
+                )
+                if pos not in exclude_set:
+                    return pos
+        else:
+            # For dense boards, sample from available positions
+            all_positions = {(x, y) for x in range(dimensions[0]) for y in range(dimensions[1])}
+            available = list(all_positions - exclude_set)
+            if available:
+                return available[np.random.randint(0, len(available))]
+
+        return None
+
+    # Place obstacles
     obstacles = []
+    for _ in range(nb_obstacles):
+        obs_pos = get_random_position(occupied_positions)
+        if obs_pos is None:
+            print(f"Failed to place all obstacles (placed {len(obstacles)}/{nb_obstacles})")
+            return None
 
-    def assign_obstacle(obstacles):
-        good = False
-        while not good:
-            ag_obstacle = [
-                np.random.randint(0, dimensions[0]),
-                np.random.randint(0, dimensions[1]),
-            ]
-            if ag_obstacle not in obstacles:
-                good = True
-        return ag_obstacle
+        obstacles.append(obs_pos)
+        occupied_positions.add(obs_pos)
+        input_dict["map"]["obstacles"].append(obs_pos)
 
-    def assign_start(starts, obstacles):
-        good = False
-        while not good:
-            ag_start = [
-                np.random.randint(0, dimensions[0]),
-                np.random.randint(0, dimensions[1]),
-            ]
-            if ag_start not in starts and ag_start not in obstacles:
-                good = True
-        return ag_start
+    # Place agents
+    for agent_id in range(nb_agents):
+        # Get start position
+        start_pos = get_random_position(occupied_positions)
+        if start_pos is None:
+            print(f"Failed to place agent {agent_id} start position")
+            return None
+        occupied_positions.add(start_pos)
 
-    def assign_goal(goals, obstacles):
-        good = False
-        while not good:
-            ag_goal = [
-                np.random.randint(0, dimensions[0]),
-                np.random.randint(0, dimensions[1]),
-            ]
-            if ag_goal not in goals and ag_goal not in obstacles:
-                good = True
-        return ag_goal
+        # Get goal position (can overlap with other goals but not starts/obstacles)
+        goal_occupied = occupied_positions - {s for s in occupied_positions if s in obstacles}
+        goal_pos = get_random_position(occupied_positions)
+        if goal_pos is None:
+            print(f"Failed to place agent {agent_id} goal position")
+            return None
+        occupied_positions.add(goal_pos)
 
-    for obstacle in range(nb_obs):
-        obstacle = assign_obstacle(obstacles)
-        obstacles.append(obstacle)
-        input_dict["map"]["obstacles"].append(tuple(obstacle))
-
-    for agent in range(nb_agents):
-        start = assign_start(starts, obstacles)
-        starts.append(start)
-        goal = assign_goal(goals, obstacles)
-        goals.append(goal)
-        input_dict["agents"].append(
-            {"start": start, "goal": goal, "name": f"agent{agent}"}
-        )
+        input_dict["agents"].append({
+            "start": list(start_pos),
+            "goal": list(goal_pos),
+            "name": f"agent{agent_id}"
+        })
 
     return input_dict
-    # OBS 0 for now
 
 
-def data_gen(input_dict, output_path):
+def data_gen(input_dict: Dict, output_path: Path) -> bool:
+    """
+    Generate solution for given MAPF instance.
 
-    os.makedirs(output_path)
+    Args:
+        input_dict: MAPF instance configuration
+        output_path: Path to save solution
+
+    Returns:
+        True if solution found, False otherwise
+    """
+    output_path.mkdir(parents=True, exist_ok=True)
+
     param = input_dict
     dimension = param["map"]["dimensions"]
     obstacles = param["map"]["obstacles"]
@@ -106,56 +129,140 @@ def data_gen(input_dict, output_path):
 
     env = Environment(dimension, agents, obstacles)
 
-    # Searching
+    # Search for solution
     cbs = CBS(env, verbose=False)
     solution = cbs.search()
+
     if not solution:
-        print(" Solution not found")
-        return
+        print(f"No solution found for case {output_path.name}")
+        return False
 
-    # Write to output file
-    output = dict()
-    output["schedule"] = solution
-    output["cost"] = env.compute_solution_cost(solution)
-    solution_path = os.path.join(output_path, "solution.yaml")
-    with open(solution_path, "w") as solution_path:
-        yaml.safe_dump(output, solution_path)
+    # Write solution file
+    output = {
+        "schedule": solution,
+        "cost": env.compute_solution_cost(solution)
+    }
 
-    parameters_path = os.path.join(output_path, "input.yaml")
-    with open(parameters_path, "w") as parameters_path:
-        yaml.safe_dump(param, parameters_path)
+    solution_file = output_path / "solution.yaml"
+    with open(solution_file, "w") as f:
+        yaml.safe_dump(output, f)
+
+    # Write input parameters file
+    parameters_file = output_path / "input.yaml"
+    with open(parameters_file, "w") as f:
+        yaml.safe_dump(param, f)
+
+    return True
 
 
-def create_solutions(path, num_cases, config):
-    cases_ready = len(os.listdir(path))
-    print("Generating solutions")
-    for i in range(cases_ready + 1, num_cases):
+def create_solutions(path: Path, num_cases: int, config: Dict):
+    """
+    Create multiple MAPF instances and their solutions.
+
+    Args:
+        path: Base path for dataset
+        num_cases: Number of cases to generate
+        config: Configuration dictionary
+    """
+    path = Path(path)
+    path.mkdir(parents=True, exist_ok=True)
+
+    # Count existing cases
+    existing_cases = [d for d in path.iterdir() if d.is_dir() and d.name.startswith("case_")]
+    cases_ready = len(existing_cases)
+
+    print(f"Generating solutions (starting from case {cases_ready})")
+
+    successful = 0
+    failed = 0
+
+    for i in range(cases_ready, num_cases):
         if i % 25 == 0:
-            print(f"Solution -- [{i}/{num_cases}]")
+            print(f"Solution -- [{i}/{num_cases}] (Success: {successful}, Failed: {failed})")
+
+        # Generate random instance
         inpt = gen_input(
-            config["map_shape"], config["nb_obstacles"], config["nb_agents"]
+            tuple(config["map_shape"]),
+            config["nb_obstacles"],
+            config["nb_agents"]
         )
-        data_gen(inpt, os.path.join(path, f"case_{i}"))
+
+        if inpt is None:
+            failed += 1
+            continue
+
+        # Generate and save solution
+        case_path = path / f"case_{i}"
+        if data_gen(inpt, case_path):
+            successful += 1
+        else:
+            failed += 1
+            # Remove failed case directory
+            if case_path.exists():
+                import shutil
+                shutil.rmtree(case_path)
+
+    print(f"Generation complete: {successful} successful, {failed} failed")
     print(f"Cases stored in {path}")
 
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for dataset generation."""
+    parser = argparse.ArgumentParser(description="Generate MAPF training dataset")
+    parser.add_argument(
+        "--path",
+        type=str,
+        default="dataset/train",
+        help="Output path for dataset"
+    )
+    parser.add_argument(
+        "--num-cases",
+        type=int,
+        default=100,
+        help="Number of cases to generate"
+    )
+    parser.add_argument(
+        "--agents",
+        type=int,
+        default=3,
+        help="Number of agents"
+    )
+    parser.add_argument(
+        "--obstacles",
+        type=int,
+        default=5,
+        help="Number of obstacles"
+    )
+    parser.add_argument(
+        "--map-size",
+        type=int,
+        nargs=2,
+        default=[10, 10],
+        help="Map dimensions (width height)"
+    )
+    args = parser.parse_args()
 
-    path = rf"dataset\obs_test"
     config = {
         "device": "cpu",
-        "num_agents": 3,
+        "map_shape": args.map_size,
+        "nb_agents": args.agents,
+        "nb_obstacles": args.obstacles,
+    }
+
+    create_solutions(Path(args.path), args.num_cases, config)
+
+
+if __name__ == "__main__":
+    # Default configuration for testing
+    test_config = {
+        "device": "cpu",
         "map_shape": [8, 8],
-        "root_dir": path,
         "nb_agents": 4,
         "nb_obstacles": 5,
     }
-    create_solutions(path, 2, config)
-    # create_solutions(path, 2000, config)
-    # total = 200
-    # for i in range(0,total):
-    #     if i%25 == 0:
-    #         print(f"Solution[{i}/{total}]")
-    #     inpt = gen_input([5,5],0,2)
-    #     data_gen(inpt, path)
-    # print(f"Solution[{i}/{total}]")
+
+    # Use cross-platform path
+    test_path = Path("dataset") / "obs_test"
+
+    # Generate small test dataset
+    create_solutions(test_path, 2, test_config)
