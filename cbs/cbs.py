@@ -12,6 +12,7 @@ author: Victor Retamal
 
 import sys
 import heapq
+import time
 from itertools import count, combinations
 from copy import copy, deepcopy
 import argparse
@@ -380,9 +381,18 @@ class HighLevelNode(object):
 class CBS(object):
     """Optimized CBS implementation with heap-based priority queue."""
 
-    def __init__(self, environment, verbose=True):
+    def __init__(self, environment, verbose=True, time_limit=None):
+        """
+        Args:
+            time_limit: seconds to spend before giving up, or None for no limit.
+                Instance difficulty is very long tailed - the median instance
+                solves in milliseconds while a few percent run for tens of
+                seconds - so a limit keeps batch generation from being dominated
+                by a handful of pathological cases.
+        """
         self.env = environment
         self.verbose = verbose
+        self.time_limit = time_limit
         self.open_list = []  # Using heap instead of set
         self.closed_set = set()
         self.counter = count()
@@ -415,7 +425,12 @@ class CBS(object):
 
         iteration_count = 0
         max_iterations = 5000  # Prevent infinite loops
+        deadline = time.perf_counter() + self.time_limit if self.time_limit else None
         while self.open_list and iteration_count < max_iterations:
+            if deadline and time.perf_counter() > deadline:
+                if self.verbose:
+                    print(f"Time limit of {self.time_limit}s reached")
+                return {}
             if self.verbose and iteration_count % 20 == 0:
                 print(f"Still searching... (iteration {iteration_count})")
             iteration_count += 1

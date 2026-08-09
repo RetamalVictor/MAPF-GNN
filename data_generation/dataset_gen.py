@@ -111,13 +111,14 @@ def gen_input(
     return input_dict
 
 
-def data_gen(input_dict: Dict, output_path: Path) -> bool:
+def data_gen(input_dict: Dict, output_path: Path, time_limit: float = None) -> bool:
     """
     Generate solution for given MAPF instance.
 
     Args:
         input_dict: MAPF instance configuration
         output_path: Path to save solution
+        time_limit: seconds to spend on this instance before giving up
 
     Returns:
         True if solution found, False otherwise
@@ -132,11 +133,10 @@ def data_gen(input_dict: Dict, output_path: Path) -> bool:
     env = Environment(dimension, agents, obstacles)
 
     # Search for solution
-    cbs = CBS(env, verbose=False)
+    cbs = CBS(env, verbose=False, time_limit=time_limit)
     solution = cbs.search()
 
     if not solution:
-        print(f"No solution found for case {output_path.name}")
         return False
 
     # Write solution file
@@ -171,7 +171,7 @@ def _solve_case(job):
         return index, False
 
     case_path = Path(path) / f"case_{index}"
-    if data_gen(inpt, case_path):
+    if data_gen(inpt, case_path, time_limit=config.get("cbs_time_limit")):
         return index, True
 
     if case_path.exists():
