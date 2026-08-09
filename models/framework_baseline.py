@@ -111,13 +111,16 @@ class Network(nn.Module):
         states.shape = (batch x agent  x channels x dimX x dimY)
         """
         batch_size = states.shape[0]
+        # Fleet size comes from the input, not the config, so the policy runs on
+        # any number of agents.
+        num_agents = states.shape[1]
         # Every agent is independent here, so the whole fleet is one batched
         # pass: looping costs a kernel launch per agent for no benefit.
-        flat_states = states.reshape(batch_size * self.num_agents, *states.shape[2:])
+        flat_states = states.reshape(batch_size * num_agents, *states.shape[2:])
         features = self.convLayers(flat_states)
         encoded_feats = self.compressMLP(features.reshape(features.size(0), -1))
         action_logits = self.actionMLP(encoded_feats).reshape(
-            batch_size, self.num_agents, self.num_actions
+            batch_size, num_agents, self.num_actions
         )
 
         return action_logits

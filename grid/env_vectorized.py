@@ -40,7 +40,6 @@ class VectorizedGraphEnv:
         self.device = torch.device(device)
         self.config = config
         self.board_size = config["board_size"][0]
-        self.nb_agents = config["num_agents"]
         self.sensing_range = config.get("sensing_range", 6)
         self.max_time = config["max_time"]
         self.pad = pad
@@ -50,7 +49,9 @@ class VectorizedGraphEnv:
         )
         if self.goal.ndim != 3:
             raise ValueError(f"goals must be (E, N, 2), got {tuple(self.goal.shape)}")
-        self.num_envs = self.goal.shape[0]
+        # Fleet size comes from the episodes, not the config, so a policy trained
+        # on five agents can be evaluated on any number.
+        self.num_envs, self.nb_agents = self.goal.shape[0], self.goal.shape[1]
 
         self.dx = torch.tensor(ACTION_DX, dtype=torch.long, device=self.device)
         self.dy = torch.tensor(ACTION_DY, dtype=torch.long, device=self.device)

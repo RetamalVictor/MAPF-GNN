@@ -134,12 +134,13 @@ class Network(nn.Module):
         gsos.shape = (batch x agent x agent)
         """
         batch_size = states.shape[0]
-        # Encode the whole fleet in one pass; see framework_gnn.py for why the
-        # per-agent loop is expensive on a model this small.
-        flat_states = states.reshape(batch_size * self.num_agents, *states.shape[2:])
+        # Fleet size comes from the input so a trained policy transfers to any
+        # number of agents; see framework_gnn.py.
+        num_agents = states.shape[1]
+        flat_states = states.reshape(batch_size * num_agents, *states.shape[2:])
         features = self.convLayers(flat_states)
         encoded_feats = self.compressMLP(features.reshape(features.size(0), -1))
-        feature_vector = encoded_feats.reshape(batch_size, self.num_agents, -1).permute(
+        feature_vector = encoded_feats.reshape(batch_size, num_agents, -1).permute(
             0, 2, 1
         )  # B x F x N
 

@@ -153,13 +153,17 @@ class Network(nn.Module):
             Action logits for each agent [batch_size, num_agents, num_actions]
         """
         batch_size = states.shape[0]
+        # Take the fleet size from the input rather than the config: every weight
+        # here is shared across agents, so a policy trained on five can be run on
+        # any number at test time.
+        num_agents = states.shape[1]
         # Encode the whole fleet in one pass. Folding the agent axis into the
         # batch turns N small convolutions into a single large one; for a model
         # this small, per-agent kernel launch overhead dominates the runtime.
-        flat_states = states.reshape(batch_size * self.num_agents, *states.shape[2:])
+        flat_states = states.reshape(batch_size * num_agents, *states.shape[2:])
         features = self.convLayers(flat_states)
         encoded_feats = self.compressMLP(features.reshape(features.size(0), -1))
-        feature_vector = encoded_feats.reshape(batch_size, self.num_agents, -1).permute(
+        feature_vector = encoded_feats.reshape(batch_size, num_agents, -1).permute(
             0, 2, 1
         )  # B x F x N
 
