@@ -1,84 +1,122 @@
 {
-  "provenance": "All numbers measured in this repository on an RTX 5070 Ti Laptop (sm_120), torch 2.11.0+cu128, 24 logical cores. Transfer figures are 200 episodes per point, seed 42.",
+  "provenance": "All numbers measured in this repository on an RTX 5070 Ti Laptop (sm_120), torch 2.11.0+cu128, 24 logical cores. Unless stated otherwise: 200 episodes per point, seed 42, evaluation episodes generated identically for every model being compared.",
 
-  "pipeline_fixes": {
-    "note": "Complete-success rate on 100 seeded episodes, gnn_k3, before and after the data-pipeline corrections.",
-    "before": 0.14,
-    "after": 0.75,
-    "training_samples_before": 4945,
-    "training_samples_after": 30727,
-    "bugs": [
-      {"name": "Recorded rollouts skipped the expert's first action", "detail": "1 of 30 replayed steps matched the CBS schedule; unshifted matches 31 of 31."},
-      {"name": "Only the first 5 of ~31 timesteps used", "detail": "Policy never observed an agent approaching a goal."},
-      {"name": "States and actions offset by one", "detail": "Trained to predict the action that produced the state."},
-      {"name": "80% of samples unreachable", "detail": "__len__ returned case count, not sample count."},
-      {"name": "Self-loops double counted in training only", "detail": "Training graphs had 2 on the diagonal, evaluation 1."}
-    ]
+  "metrics": {
+    "alpha": "Success rate. The fraction of cases where EVERY robot reaches its goal before timeout. This is the metric Li et al. report and the one this project now leads with.",
+    "at_goal": "The fraction of robots reaching their goal, averaged over episodes. Softer than alpha and not comparable to the literature; kept because it shows partial progress that alpha hides."
   },
 
-  "training_density": [
-    {"config": "5 agents / 28x28", "neighbours": 0.25, "empty_graph_pct": 51},
-    {"config": "10 agents / 28x28", "neighbours": 0.54, "empty_graph_pct": 5},
-    {"config": "10 agents / 20x20", "neighbours": 0.99, "empty_graph_pct": 0}
-  ],
+  "deadlock_diagnosis": {
+    "note": "Why the policy failed, measured on 200 episodes at 20 robots with the online-expert model, horizon 120. Every failed episode was checked for whether its joint state repeats.",
+    "failed_episodes": 159,
+    "completely_frozen": 156,
+    "frozen_pct": 98,
+    "cycling": 3,
+    "cycling_pct": 2,
+    "neither": 0,
+    "conclusion": "A deterministic policy in a deterministic environment: once the joint state repeats it repeats forever. Failures were not slow episodes but fixed points, which is also why raising the horizon from 42 to 200 steps had moved results by under half a point."
+  },
+
+  "decoding_sweep": {
+    "note": "Same online-expert checkpoint, same episodes, horizon 120. Only action selection changes. 'steps' is the mean length of a successful episode.",
+    "rows": [
+      {"decoding": "argmax",         "alpha_20": 0.205, "steps_20": 40.3, "alpha_40": 0.015, "steps_40": 57.0},
+      {"decoding": "sample T=1.0",   "alpha_20": 0.635, "steps_20": 46.9, "alpha_40": 0.295, "steps_40": 71.5},
+      {"decoding": "sample T=2.0",   "alpha_20": 0.960, "steps_20": 46.0, "alpha_40": 0.880, "steps_40": 70.1},
+      {"decoding": "sample T=3.0",   "alpha_20": 0.980, "steps_20": 47.1, "alpha_40": 0.980, "steps_40": 71.3},
+      {"decoding": "sample T=5.0",   "alpha_20": 0.695, "steps_20": 82.9, "alpha_40": 0.020, "steps_40": 109.0},
+      {"decoding": "uniform random", "alpha_20": 0.0,   "steps_20": null, "alpha_40": 0.0,   "steps_40": null}
+    ],
+    "conclusion": "Uniform random scores zero, so the policy does the work and sampling only breaks the symmetry that freezes it. There is a real optimum around T=3: at T=5 the policy's own preference is drowned out and success collapses. Successful paths get about 25% longer for a 65x higher success rate."
+  },
+
+  "online_expert": {
+    "note": "Three rounds on gnn_msg_k3_a10b20. Failures collected at the training fleet size (10 robots) because samples are shaped by agent count. Alpha here was measured with argmax, before decoding was wired in.",
+    "decoding": "argmax",
+    "rounds": [
+      {"round": 0, "oe_cases": 0,   "alpha": {"10": 0.440, "20": 0.090, "40": 0.000, "60": 0.000}, "at_goal": {"10": 0.889, "20": 0.835, "40": 0.779, "60": 0.742}},
+      {"round": 1, "oe_cases": 152, "alpha": {"10": 0.575, "20": 0.160, "40": 0.005, "60": 0.000}, "at_goal": {"10": 0.920, "20": 0.873, "40": 0.835, "60": 0.801}},
+      {"round": 2, "oe_cases": 277, "alpha": {"10": 0.595, "20": 0.180, "40": 0.040, "60": 0.005}, "at_goal": {"10": 0.918, "20": 0.880, "40": 0.845, "60": 0.816}},
+      {"round": 3, "oe_cases": 383, "alpha": {"10": 0.600, "20": 0.205, "40": 0.015, "60": 0.000}, "at_goal": {"10": 0.915, "20": 0.889, "40": 0.841, "60": 0.815}}
+    ],
+    "collection": [
+      {"round": 1, "episodes": 300, "failed": 169, "new": 169, "solved": 152},
+      {"round": 2, "episodes": 300, "failed": 136, "new": 136, "solved": 125},
+      {"round": 3, "episodes": 300, "failed": 115, "new": 115, "solved": 106}
+    ],
+    "cbs_on_jammed_states": {"solved": 34, "attempted": 40, "pct": 85, "ms_per_case": 55,
+      "note": "Jammed configurations are harder than random ones, but optimal CBS with a 2s limit clears them - the ECBS suboptimality bound budgeted for in the proposal was not needed."},
+    "conclusion": "The failure rate at the collection fleet fell 56% -> 45% -> 38% across rounds, measured independently of the alpha evaluation, so the loop genuinely improves the regime it corrects. Gains are largest near the training fleet and diminishing by round 3."
+  },
+
+  "online_expert_vs_decoding": {
+    "note": "The two interventions are complementary. gnn_msg_k3_a10b20, 200 episodes, horizon 120, robots at 10 / 20 / 40.",
+    "rows": [
+      {"model": "offline only",    "decoding": "argmax",     "alpha": [0.400, 0.090, 0.000]},
+      {"model": "offline only",    "decoding": "sample T=1", "alpha": [0.670, 0.365, 0.040]},
+      {"model": "+ online expert", "decoding": "argmax",     "alpha": [0.600, 0.205, 0.015]},
+      {"model": "+ online expert", "decoding": "sample T=1", "alpha": [0.850, 0.635, 0.295]},
+      {"model": "+ online expert", "decoding": "sample T=1.5","alpha": [0.965, 0.875, 0.675]},
+      {"model": "+ online expert", "decoding": "sample T=2.0","alpha": [0.975, 0.960, 0.880]}
+    ],
+    "conclusion": "At 40 robots, sampling alone takes the offline model from 0.000 to 0.040; the online expert alone takes it to 0.015; together they reach 0.880. Neither substitutes for the other."
+  },
+
+  "horizon_interacts_with_decoding": {
+    "note": "A methodological trap. Under argmax the horizon barely matters, because a fixed point never resolves however long you wait. Under sampling a generous horizon lets the policy brute-force its way, and every architecture saturates.",
+    "argmax_horizon_42_vs_200": "under half a point of difference",
+    "sampling_horizon_300": "baseline and both GNNs all reach alpha 0.98-0.995 at 40 robots - the comparison becomes meaningless",
+    "resolution": "Horizon scaled to the board: 3x the board width, so it grows with the map but never becomes a brute-force budget."
+  },
 
   "transfer_matched_density": {
-    "note": "Board grows as sqrt(agents) so agents-per-cell stays fixed. Horizon 300 steps. Fraction of agents reaching goal.",
-    "agents":   [10, 20, 40, 60, 100],
-    "board":    [20, 28, 40, 49, 63],
-    "neighbours": [1.07, 1.19, 1.30, 1.39, 1.53],
-    "series": {
-      "No communication": [0.787, 0.739, 0.650, 0.590, 0.534],
-      "GCN K=3":          [0.855, 0.820, 0.760, 0.709, 0.654],
-      "GNN message K=3":  [0.853, 0.834, 0.763, 0.726, 0.666]
-    }
-  },
-
-  "transfer_fixed_board": {
-    "note": "Board held at 28x28, so adding agents also crowds them. Horizon 42.",
-    "agents": [5, 10, 20, 40, 60],
-    "neighbours": [0.26, 0.63, 1.23, 2.36, 3.14],
-    "series": {
-      "No communication": [0.911, 0.852, 0.744, 0.579, 0.480],
-      "GNN message K=3":  [0.940, 0.905, 0.826, 0.668, 0.559]
-    }
-  },
-
-  "training_fleet_size": {
-    "note": "Does training on more agents help? Matched-density evaluation, horizon 300, message-passing model.",
-    "agents": [10, 20, 40, 60, 100],
-    "series": {
-      "trained on 5 (28x28)":  [0.855, 0.834, 0.787, 0.741, 0.695],
-      "trained on 10 (28x28)": [0.866, 0.816, 0.759, 0.726, 0.665],
-      "trained on 10 (20x20)": [0.853, 0.834, 0.763, 0.726, 0.666]
-    }
-  },
-
-  "horizon_artifact": {
-    "note": "A fixed 42-step horizon on a growing board scores agents on goals they cannot physically reach.",
+    "note": "Board grows as sqrt(agents) so robots-per-cell stays fixed. Trained on 10 robots on a 20x20 board. Horizon 3x board width.",
     "agents": [10, 20, 40, 60, 100],
     "board": [20, 28, 40, 49, 63],
-    "series": {
-      "horizon 42":  [0.853, 0.819, 0.663, 0.544, 0.400],
-      "horizon 300": [0.853, 0.834, 0.763, 0.726, 0.666]
-    }
+    "argmax": {
+      "neighbours": [1.15, 1.29, 1.41, 1.52, 1.64],
+      "alpha": {
+        "No communication": [0.190, 0.020, 0.000, 0.000, 0.000],
+        "GCN K=3":          [0.335, 0.045, 0.000, 0.000, 0.000],
+        "GNN message K=3":  [0.325, 0.080, 0.000, 0.000, 0.000]
+      },
+      "at_goal": {
+        "No communication": [0.787, 0.739, 0.650, 0.590, 0.534],
+        "GCN K=3":          [0.855, 0.820, 0.760, 0.709, 0.654],
+        "GNN message K=3":  [0.853, 0.834, 0.763, 0.726, 0.666]
+      }
+    },
+    "sampled_t3": {
+      "neighbours": [1.01, 1.11, 1.14, 1.14, 1.19],
+      "alpha": {
+        "No communication": [0.965, 0.950, 0.935, 0.770, 0.210],
+        "GCN K=3":          [0.950, 0.935, 0.930, 0.850, 0.600],
+        "GNN message K=3":  [0.950, 0.895, 0.860, 0.785, 0.695]
+      },
+      "at_goal": {
+        "No communication": [0.995, 0.995, 0.996, 0.987, 0.957],
+        "GCN K=3":          [0.994, 0.994, 0.995, 0.992, 0.984],
+        "GNN message K=3":  [0.994, 0.992, 0.994, 0.995, 0.993]
+      }
+    },
+    "conclusion": "With symmetry breaking in place, communication is worth little up to about 40 robots - a reactive policy plus a tie-break handles it - and becomes decisive at 100, where the non-communicating policy collapses to 0.21 while the communicating ones hold 0.60-0.70. The benefit of communication is a function of scale, not a constant."
   },
 
   "cbs_optimisation": {
-    "note": "Mean seconds per instance, 20 agents on 14x14, 5 instances, identical solve/fail outcomes at every step.",
+    "note": "Mean seconds per instance, 20 robots on 14x14, 5 instances, identical solve/fail outcomes at every step.",
     "steps": [
       {"stage": "Baseline", "seconds": 25.77},
       {"stage": "Replan only the constrained agent", "seconds": 2.38},
       {"stage": "O(T*N) conflict detection", "seconds": 1.97},
       {"stage": "No throwaway constraint objects", "seconds": 1.18}
-    ]
+    ],
+    "parallel": "A process pool takes 48 dense cases from 71.1s to 14.9s on 23 workers, with an identical 27 solved."
   },
 
   "cbs_tail": {
-    "note": "10 agents on 28x28, 60 instances. Difficulty is long tailed, so a time limit buys most of the speed for a few percent of the cases.",
+    "note": "10 robots on 28x28, 60 instances. Difficulty is long tailed, so a time limit buys most of the speed for a few percent of the cases.",
     "median_s": 0.007,
     "mean_s": 0.462,
-    "p90_s": 0.030,
     "p99_s": 10.969,
     "max_s": 15.636,
     "limits": [
@@ -89,7 +127,7 @@
   },
 
   "cbs_scaling": {
-    "note": "Instances solved out of 12 on a 28x28 board with 8 obstacles.",
+    "note": "Instances solved out of 12 on a 28x28 board with 8 obstacles. The expert stays tractable well past the fleet size it is needed for.",
     "agents": [5, 10, 15, 20, 30],
     "solved": [12, 11, 12, 11, 2]
   },
@@ -102,10 +140,10 @@
   },
 
   "forward_pass": {
-    "note": "Per-forward milliseconds. The model is latency bound, not compute bound, until the batch gets large.",
+    "note": "Per-forward milliseconds. Latency bound, not compute bound, until the batch gets large.",
     "batch": [1, 128],
     "per_agent_loop_ms": [2.064, 7.292],
     "vectorised_ms": [0.650, 0.608],
-    "cuda_graph_note": "Capturing the forward in a CUDA graph gives 5.2x at 100 episodes (0.594 -> 0.114 ms) but only 1.1x at 1000 (0.776 -> 0.685 ms), because by then the GPU is doing real work."
+    "cuda_graph": "Capturing the forward in a CUDA graph gives 5.2x at 100 episodes (0.594 -> 0.114 ms) but only 1.1x at 1000 (0.776 -> 0.685 ms), because by then the GPU is doing real work."
   }
 }

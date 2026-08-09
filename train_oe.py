@@ -29,6 +29,7 @@ from benchmarks.benchmark_transfer import build_network, make_episodes
 from data_generation.online_expert import collect_failures, failure_key, relabel
 from evaluate import _load_yaml
 from grid.env_vectorized import VectorizedGraphEnv
+from policy import DEFAULT_TEMPERATURE, select_actions
 
 # Fleet sizes to report alpha at each round. The training fleet first, then
 # sizes the policy has never seen.
@@ -37,7 +38,8 @@ EVAL_EPISODES = 200
 EVAL_SEED = 42
 
 
-def evaluate_alpha(model, config, device, episodes=EVAL_EPISODES):
+def evaluate_alpha(model, config, device, episodes=EVAL_EPISODES,
+                   temperature=DEFAULT_TEMPERATURE):
     """Success rate alpha, plus the softer fraction-of-robots metric."""
     results = {}
     is_gnn = config["net_type"] != "baseline"
@@ -52,11 +54,12 @@ def evaluate_alpha(model, config, device, episodes=EVAL_EPISODES):
         )
         obs = env.get_observations()
         finished = torch.zeros(episodes, dtype=torch.bool, device=env.device)
+        generator = torch.Generator(device=env.device).manual_seed(EVAL_SEED)
 
         for _ in range(horizon):
             with torch.no_grad():
                 logits = model(obs["fov"], obs["adj_matrix"]) if is_gnn else model(obs["fov"])
-            actions = logits.argmax(dim=2)
+            actions = select_actions(logits, temperature, generator)
             actions = torch.where(finished.unsqueeze(1), torch.zeros_like(actions), actions)
             obs, done = env.step(actions)
             finished = finished | done
@@ -113,6 +116,8 @@ def main():
                    help="Ceiling on the online expert's share of the dataset")
     p.add_argument("--time-limit", type=float, default=2.0)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--temperature", type=float, default=DEFAULT_TEMPERATURE,
+                   help="Action sampling temperature used when reporting alpha")
     args = p.parse_args()
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -178,7 +183,8 @@ def main():
         train_seconds = time.time() - started
 
         model = load_policy(oe_name, round_config, device)
-        alpha = evaluate_alpha(model, round_config, device)
+        alpha = evaluate_alpha(model, round_config, device,
+                               temperature=args.temperature)
 
         entry = {
             "round": round_i,

@@ -24,6 +24,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from grid.env_graph_gridv1 import create_goals, create_obstacles
 from grid.env_vectorized import VectorizedGraphEnv
+from policy import add_temperature_argument, select_actions
 
 
 def build_network(config):
@@ -59,7 +60,8 @@ def make_episodes(board, agents, obstacles, count, seed):
     )
 
 
-def rollout(model, config, board, agents, obstacles, episodes, seed, device, max_steps):
+def rollout(model, config, board, agents, obstacles, episodes, seed, device,
+            max_steps, temperature=0.0):
     obs_arr, goals, starts = make_episodes(board, agents, obstacles, episodes, seed)
     env = VectorizedGraphEnv(
         dict(config, board_size=[board, board]),
@@ -69,13 +71,14 @@ def rollout(model, config, board, agents, obstacles, episodes, seed, device, max
     is_gnn = config["net_type"] != "baseline"
 
     finished = torch.zeros(episodes, dtype=torch.bool, device=env.device)
+    generator = torch.Generator(device=env.device).manual_seed(seed)
     neighbours = []
 
     for _ in range(max_steps):
         neighbours.append(obs["adj_matrix"].sum(dim=2).mean().item())
         with torch.no_grad():
             logits = model(obs["fov"], obs["adj_matrix"]) if is_gnn else model(obs["fov"])
-        actions = logits.argmax(dim=2)
+        actions = select_actions(logits, temperature, generator)
         actions = torch.where(finished.unsqueeze(1), torch.zeros_like(actions), actions)
         obs, done = env.step(actions)
         finished = finished | done
@@ -84,6 +87,7 @@ def rollout(model, config, board, agents, obstacles, episodes, seed, device, max
 
     rates = env.success_rate()
     return {
+        "alpha": float((rates == 1.0).float().mean()),
         "complete": float((rates == 1.0).float().mean()),
         "at_goal": float(rates.mean()),
         "neighbours": float(np.mean(neighbours)),
@@ -122,9 +126,15 @@ def main():
                              "effects cannot be told apart.")
     parser.add_argument("--episodes", type=int, default=200)
     parser.add_argument("--max-steps", type=int, default=None,
-                        help="Override the episode horizon; crowded boards need "
-                             "more steps than the training configuration allows")
+                        help="Fixed episode horizon for every point")
+    parser.add_argument("--horizon-factor", type=float, default=None,
+                        help="Episode horizon as a multiple of the board width. "
+                             "A fixed horizon is unfair once the board grows with "
+                             "the fleet, and an over-generous one lets a sampling "
+                             "policy brute-force its way to the goal, which hides "
+                             "the differences between architectures.")
     parser.add_argument("--seed", type=int, default=42)
+    add_temperature_argument(parser)
     parser.add_argument("--save", default=None)
     args = parser.parse_args()
 
@@ -142,14 +152,16 @@ def main():
         model.load_state_dict(
             torch.load(model_dir / "best_model.pt", map_location=device)
         )
-        max_steps = args.max_steps or config["max_steps"] + 10
+        default_steps = args.max_steps or config["max_steps"] + 10
 
         results[model_dir.name] = {}
         for agents in args.agents:
             board, obstacles = scenario(args, agents)
+            max_steps = (int(args.horizon_factor * board)
+                         if args.horizon_factor else default_steps)
             results[model_dir.name][agents] = rollout(
                 model, config, board, agents, obstacles,
-                args.episodes, args.seed, device, max_steps,
+                args.episodes, args.seed, device, max_steps, args.temperature,
             )
             results[model_dir.name][agents]["board"] = board
 

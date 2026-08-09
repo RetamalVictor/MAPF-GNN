@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 
 import torch
 from grid.env_graph_gridv1 import GraphEnv, create_goals, create_obstacles
+from policy import add_temperature_argument, select_actions
 
 
 # Settings that must match the ones a checkpoint was trained with. Architecture
@@ -101,6 +102,7 @@ def parse_args():
                        help="Maximum steps per episode (overrides config)")
     parser.add_argument("--seed", type=int, default=42,
                        help="Random seed for episode generation (reproducible results)")
+    add_temperature_argument(parser)
 
     # Visualization
     parser.add_argument("--render", action="store_true", default=False,
@@ -157,6 +159,9 @@ class Evaluator:
         # same checkpoint scores differently on every run.
         np.random.seed(args.seed)
         torch.manual_seed(args.seed)
+        # Separate stream for action sampling, so episode layouts stay identical
+        # whatever the temperature is.
+        self.generator = torch.Generator(device="cpu").manual_seed(args.seed)
         self.config = self.load_config()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.config["device"] = self.device
@@ -288,13 +293,13 @@ class Evaluator:
             inference_start = time.time()
             with torch.no_grad():
                 if self.config["net_type"] == "gnn":
-                    action = self.model(fov, gso)
+                    logits = self.model(fov, gso)
                 else:
-                    action = self.model(fov)
-                action = action.cpu().squeeze(0).numpy()
+                    logits = self.model(fov)
+                action = select_actions(
+                    logits, self.args.temperature, self.generator
+                ).cpu().squeeze(0).numpy()
             stats.inference_time += time.time() - inference_start
-
-            action = np.argmax(action, axis=1)
 
             # Step environment
             obs, reward, done, info = env.step(action, emb)
