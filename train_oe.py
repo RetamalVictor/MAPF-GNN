@@ -81,12 +81,13 @@ def load_policy(exp_name, config, device):
     return model
 
 
-def gather(model, config, device, episodes, agents, board, obstacles, seed, seen):
+def gather(model, config, device, episodes, agents, board, obstacles, seed, seen,
+           temperature=0.0):
     """Roll the policy out and return the stuck states we have not seen before."""
     obs_arr, goals, starts = make_episodes(board, agents, obstacles, episodes, seed)
     failures = collect_failures(
         model, config, board, goals, obs_arr, starts, device,
-        max_steps=config["max_steps"] + 10,
+        max_steps=config["max_steps"] + 10, temperature=temperature, seed=seed,
     )
     fresh = []
     for failure in failures:
@@ -208,7 +209,7 @@ def main():
         failures, fresh = gather(
             model, round_config, device, args.episodes,
             args.collect_agents, args.collect_board, obstacles,
-            args.seed + round_i, seen,
+            args.seed + round_i, seen, temperature=args.temperature,
         )
         solved, attempted = relabel(
             fresh, args.collect_board, oe_root / "train", round_config,

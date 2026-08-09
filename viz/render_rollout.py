@@ -32,6 +32,7 @@ sys.path.append(str(Path(__file__).parent.parent))
 
 from benchmarks.benchmark_transfer import build_network, make_episodes
 from grid.env_vectorized import VectorizedGraphEnv
+from policy import select_actions
 
 # Light surface, from the reference palette
 SURFACE = (252, 252, 251)
@@ -59,7 +60,8 @@ LABELS = {
 }
 
 
-def rollout_frames(model, config, board, agents, obstacles, seed, max_steps, device):
+def rollout_frames(model, config, board, agents, obstacles, seed, max_steps, device,
+                   temperature=0.0):
     """Run one episode, returning per-step positions, goals, graph and status."""
     obs_arr, goals, starts = make_episodes(board, agents, obstacles, 1, seed)
     env = VectorizedGraphEnv(
@@ -70,6 +72,7 @@ def rollout_frames(model, config, board, agents, obstacles, seed, max_steps, dev
     is_gnn = config["net_type"] != "baseline"
 
     history = []
+    generator = torch.Generator(device=env.device).manual_seed(seed)
     still_for = np.zeros(agents, dtype=int)
     previous = env.get_positions()[0].cpu().numpy()
 
@@ -89,7 +92,7 @@ def rollout_frames(model, config, board, agents, obstacles, seed, max_steps, dev
         previous = positions
         with torch.no_grad():
             logits = model(obs["fov"], obs["adj_matrix"]) if is_gnn else model(obs["fov"])
-        obs, _ = env.step(logits.argmax(dim=2))
+        obs, _ = env.step(select_actions(logits, temperature, generator))
 
     return history, goals[0], obs_arr[0]
 
@@ -187,6 +190,11 @@ def main():
     p.add_argument("--obstacles", type=int, default=8)
     p.add_argument("--seed", type=int, default=3)
     p.add_argument("--max-steps", type=int, default=60)
+    p.add_argument("--temperature", type=float, default=0.0,
+                   help="Action sampling temperature; 0 is deterministic")
+    p.add_argument("--compare-decoding", metavar="MODEL",
+                   help="Same model on the same instance, deterministic on the "
+                        "left and sampled on the right")
     p.add_argument("--out", default="viz/out")
     args = p.parse_args()
 
@@ -194,15 +202,28 @@ def main():
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
 
-    if args.compare:
+    if args.compare_decoding:
+        model, config = load(args.compare_decoding, device)
+        panels = []
+        for label, temp in (("Deterministic (argmax)", 0.0),
+                            (f"Sampled (T={args.temperature or 3.0:g})",
+                             args.temperature or 3.0)):
+            history, goals, obstacles = rollout_frames(
+                model, config, args.board, args.agents, args.obstacles,
+                args.seed, args.max_steps, device, temperature=temp)
+            panels.append((label, history, goals, obstacles))
+    elif args.compare:
         panels = []
         for model_dir in args.compare:
             model, config = load(model_dir, device)
             history, goals, obstacles = rollout_frames(
                 model, config, args.board, args.agents, args.obstacles,
-                args.seed, args.max_steps, device)
+                args.seed, args.max_steps, device, temperature=args.temperature)
             panels.append((Path(model_dir).name, history, goals, obstacles))
+    else:
+        panels = None
 
+    if panels:
         length = max(len(h) for _, h, _, _ in panels)
         frames = []
         for t in range(length):
@@ -220,13 +241,14 @@ def main():
                 combined.paste(image, (x, 0))
                 x += image.width
             frames.append(combined)
-        save_gif(frames, out / f"compare_{args.agents}agents.gif")
+        tag = "decoding" if args.compare_decoding else "compare"
+        save_gif(frames, out / f"{tag}_{args.agents}agents.gif")
         return
 
     model, config = load(args.model, device)
     history, goals, obstacles = rollout_frames(
         model, config, args.board, args.agents, args.obstacles,
-        args.seed, args.max_steps, device)
+        args.seed, args.max_steps, device, temperature=args.temperature)
     name = Path(args.model).name
     frames = [
         draw_frame(f, goals, obstacles, args.board, title=LABELS.get(name, name), legend=True,

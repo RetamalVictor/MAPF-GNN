@@ -26,10 +26,11 @@ from data_generation.dataset_gen import data_gen
 from data_generation.record import record_env
 from data_generation.trajectory_parser import parse_dataset_trajectories
 from grid.env_vectorized import VectorizedGraphEnv
+from policy import select_actions
 
 
 def rollout_with_history(model, config, board, goals, obstacles, starts,
-                         device, max_steps):
+                         device, max_steps, temperature=0.0, seed=0):
     """Run the policy and keep the positions and goal counts at every step."""
     env = VectorizedGraphEnv(
         dict(config, board_size=[board, board]),
@@ -41,11 +42,12 @@ def rollout_with_history(model, config, board, goals, obstacles, starts,
     positions = [env.get_positions().cpu().numpy()]
     arrived = [env.at_goal().sum(dim=1).cpu().numpy()]
     finished = torch.zeros(len(goals), dtype=torch.bool, device=env.device)
+    generator = torch.Generator(device=env.device).manual_seed(seed)
 
     for _ in range(max_steps):
         with torch.no_grad():
             logits = model(obs["fov"], obs["adj_matrix"]) if is_gnn else model(obs["fov"])
-        actions = logits.argmax(dim=2)
+        actions = select_actions(logits, temperature, generator)
         actions = torch.where(finished.unsqueeze(1), torch.zeros_like(actions), actions)
 
         obs, done = env.step(actions)
@@ -70,14 +72,17 @@ def stuck_step(arrived_over_time):
 
 
 def collect_failures(model, config, board, goals, obstacles, starts,
-                     device, max_steps):
+                     device, max_steps, temperature=0.0, seed=0):
     """Configurations where the policy stopped making progress.
 
     Returns one record per failed episode, holding the positions at the moment
     progress stopped, the original goals, and the obstacles.
     """
+    # Collect under the decoding the policy will actually be deployed with:
+    # relabelling states it never reaches at deployment teaches the wrong thing.
     positions, arrived, at_goal = rollout_with_history(
-        model, config, board, goals, obstacles, starts, device, max_steps)
+        model, config, board, goals, obstacles, starts, device, max_steps,
+        temperature=temperature, seed=seed)
 
     failures = []
     for e in range(len(goals)):

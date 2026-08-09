@@ -327,12 +327,13 @@ HTML = f"""<title>Decentralised multi-robot path planning with graph neural netw
     planner, using only a local view and a few messages from its neighbours.</p>
   </div>
   <figure class="plain">
-    <img src="{gif('compare_30agents.gif')}" alt="Two panels of thirty robots crossing a grid. On
-    the left, without communication, a large cluster of robots stalls. On the right the same robots
-    with communication mostly reach their goals.">
-    <figcaption>Thirty robots, one instance, two policies trained on identical demonstrations. The
+    <img src="{gif('compare_40agents.gif')}" alt="Two panels of forty robots crossing a grid. On
+    the left, without communication, clusters of robots stall. On the right the same robots with
+    communication reach their goals more often.">
+    <figcaption>Forty robots, one instance, two policies trained on identical demonstrations. The
     only difference is whether a robot may hear from its neighbours. Blue is moving, green has
-    arrived, red has not moved in six steps; thin lines are the live communication graph.</figcaption>
+    arrived, red has not moved in six steps; thin lines are the live communication graph. Both are
+    shown deterministically here — the next section is about why that matters.</figcaption>
   </figure>
   <div class="callout col">
     <p><strong>The metric throughout is α</strong> — the fraction of episodes where <em>every</em>
@@ -577,6 +578,14 @@ HTML = f"""<title>Decentralised multi-robot path planning with graph neural netw
     <p>Drawing the action from the policy's distribution instead of taking its maximum costs one line
     at inference and no retraining.</p>
   </div>
+  <figure class="plain">
+    <img src="{gif('decoding_40agents.gif')}" alt="The same policy on the same forty-robot instance,
+    deterministic on the left and sampled on the right. The deterministic run leaves several robots
+    permanently stalled; the sampled run finishes.">
+    <figcaption>One policy, one instance, two ways of choosing the action. The deterministic run
+    ends with 34 of 40 home and a set of robots frozen in place; sampling the same distribution
+    finishes all 40 in fewer steps. No weights differ between these two panels.</figcaption>
+  </figure>
   <figure>
     <ul class="legend">
       <li><span class="swatch" style="background:var(--s1)"></span>40 robots</li>
