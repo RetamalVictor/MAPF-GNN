@@ -157,19 +157,19 @@ decoding_chart = line_chart(
     0.0, 1.0, lambda v: f"{v*100:.0f}%", "success rate α", "decoding",
 )
 
-oe = DATA["online_expert"]["rounds"]
+ba = DATA["online_expert"]["before_after"]
 oe_chart = line_chart(
     {
-        "aria": "Success rate improves over three rounds of online expert "
-                "training at every fleet size.",
-        "x_labels": [f"{r['round']}" for r in oe],
-        "x_title": "online expert round",
+        "aria": "After three rounds of online expert training the success rate is "
+                "higher at every fleet size, and most at sixty robots.",
+        "x_labels": [str(a) for a in ba["agents"]],
+        "x_title": "robots in the fleet",
         "series": [
-            {"name": "10 robots", "values": [r["alpha"]["10"] for r in oe]},
-            {"name": "20 robots", "values": [r["alpha"]["20"] for r in oe]},
+            {"name": "after", "values": ba["alpha_after"]},
+            {"name": "before", "values": ba["alpha_before"]},
         ],
     },
-    0.0, 0.7, lambda v: f"{v*100:.0f}%", "success rate α  (deterministic)", "oe",
+    0.6, 1.0, lambda v: f"{v*100:.0f}%", "success rate α", "oe",
 )
 
 cbs_chart = bar_chart(
@@ -660,15 +660,21 @@ HTML = f"""<title>Decentralised multi-robot path planning with graph neural netw
   </figure>
   <figure>
     <ul class="legend">
-      <li><span class="swatch" style="background:var(--s1)"></span>10 robots</li>
-      <li><span class="swatch" style="background:var(--s2)"></span>20 robots</li>
+      <li><span class="swatch" style="background:var(--s1)"></span>after three rounds</li>
+      <li><span class="swatch" style="background:var(--s2)"></span>before</li>
     </ul>
     {oe_chart}
-    <figcaption>Three rounds, measured deterministically so the effect is isolated from the sampling
-    above. The cleanest evidence is independent of α: the share of rollouts that jam fell
-    <strong>56% → 45% → 38%</strong> across rounds. The two interventions compose — at 40 robots,
-    sampling alone lifts the offline model to 0.040 and the online expert alone to 0.015, but
-    together they reach 0.880.</figcaption>
+    <figcaption>Three rounds, 117 relabelled cases against 1,181 offline ones, evaluated with the
+    same sampled decoding used for deployment. The gain is largest in the middle of the range —
+    <strong>+15 points at sixty robots</strong>, +8.5 at forty — where the fleet is dense enough to
+    jam but the policy is not yet overwhelmed. Measured deterministically instead, where there is far
+    more headroom, α at ten robots goes 0.44 → 0.60 over the same three rounds, and the share of
+    rollouts that jam falls 56% → 45% → 38%.</figcaption>
+    {table(
+        ["robots", "board", "before", "after"],
+        [[a, f"{b}×{b}", f"{x:.3f}", f"{y:.3f}"] for a, b, x, y in zip(
+            ba["agents"], ba["board"], ba["alpha_before"], ba["alpha_after"])],
+        "Show the numbers")}
   </figure>
 </section>
 

@@ -43,9 +43,12 @@ def evaluate_alpha(model, config, device, episodes=EVAL_EPISODES,
     """Success rate alpha, plus the softer fraction-of-robots metric."""
     results = {}
     is_gnn = config["net_type"] != "baseline"
-    horizon = 300
 
     for agents, board in EVAL_POINTS:
+        # Horizon scaled to the board. A fixed generous horizon becomes a
+        # brute-force budget once actions are sampled, and every configuration
+        # saturates near 1.0 regardless of how good it is.
+        horizon = 3 * board
         obstacles = max(1, round(8 / (28 ** 2) * board ** 2))
         obs_arr, goals, starts = make_episodes(board, agents, obstacles, episodes, EVAL_SEED)
         env = VectorizedGraphEnv(

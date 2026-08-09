@@ -73,6 +73,23 @@ The cleanest evidence it works is independent of α: the failure rate at the
 collection fleet fell **56% → 45% → 38%** across rounds. The policy genuinely
 jams less in the regime it is corrected in.
 
+**Under sampled decoding**, evaluated at a board-proportional horizon, three
+rounds and 117 relabelled cases against 1,181 offline ones:
+
+| robots | before | after | gain |
+|---|---|---|---|
+| 10 | 0.950 | 0.960 | +1.0 |
+| 20 | 0.895 | 0.960 | +6.5 |
+| 40 | 0.860 | 0.945 | +8.5 |
+| 60 | 0.785 | **0.935** | **+15.0** |
+| 100 | 0.695 | 0.755 | +6.0 |
+
+The gain is largest in the middle of the range, where the fleet is dense enough
+to jam but the policy is not yet overwhelmed. Collection now uses the same
+decoding as deployment — relabelling states the policy never reaches teaches the
+wrong thing — so only 51 of 600 rollouts fail rather than 169 of 300, and every
+case in the pool is a residual failure rather than a tie-breaking artifact.
+
 **The two interventions compose.** At 40 robots:
 
 | | argmax | sample T=1 |
@@ -104,6 +121,11 @@ with the map but never turns into unlimited retries.
 Worth stating plainly: two different horizons, both defensible in isolation,
 produced opposite conclusions about whether communication matters. The horizon
 has to be reported alongside α.
+
+**And it caught me twice.** The online expert loop's own evaluation still had a
+hardcoded 300-step horizon, so its first sampled run reported α ≈ 1.0 at every
+fleet size from round 0 and appeared to show the online expert doing nothing.
+Same trap, second occurrence, in code I had written after identifying it.
 
 ---
 
