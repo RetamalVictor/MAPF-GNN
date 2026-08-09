@@ -117,6 +117,8 @@ def table(headers, rows, caption):
 
 # ── figures ──────────────────────────────────────────────────────────────
 
+# ── figures ──────────────────────────────────────────────────────────────
+
 md = DATA["transfer_matched_density"]
 transfer_chart = line_chart(
     {
@@ -133,32 +135,17 @@ transfer_chart = line_chart(
     0.45, 0.95, lambda v: f"{v*100:.0f}%", "robots reaching their goal", "transfer",
 )
 
-ha = DATA["horizon_artifact"]
-horizon_chart = line_chart(
-    {
-        "aria": "With a fixed 42-step horizon the policy appears to collapse at large "
-                "fleet sizes; with a horizon that fits the board it does not.",
-        "x_labels": [str(a) for a in ha["agents"]],
-        "x_title": "robots  (board grows with the fleet: 20×20 → 63×63)",
-        "series": [
-            {"name": "horizon 300", "values": ha["series"]["horizon 300"]},
-            {"name": "horizon 42", "values": ha["series"]["horizon 42"]},
-        ],
-    },
-    0.35, 0.90, lambda v: f"{v*100:.0f}%", "robots reaching their goal", "horizon",
-)
-
 tf = DATA["training_fleet_size"]
 fleet_chart = line_chart(
     {
-        "aria": "Training on ten robots instead of five does not improve performance "
-                "at larger fleet sizes.",
+        "aria": "Policies trained on five robots match those trained on ten at every "
+                "evaluation fleet size.",
         "x_labels": [f"{a}" for a in tf["agents"]],
         "x_title": "robots at evaluation",
         "series": [
-            {"name": "trained on 5", "values": tf["series"]["trained on 5 (28x28)"]},
-            {"name": "trained on 10", "values": tf["series"]["trained on 10 (28x28)"]},
-            {"name": "trained on 10, dense", "values": tf["series"]["trained on 10 (20x20)"]},
+            {"name": "expert used 5", "values": tf["series"]["trained on 5 (28x28)"]},
+            {"name": "expert used 10", "values": tf["series"]["trained on 10 (28x28)"]},
+            {"name": "10, dense board", "values": tf["series"]["trained on 10 (20x20)"]},
         ],
     },
     0.60, 0.90, lambda v: f"{v*100:.0f}%", "robots reaching their goal", "fleet",
@@ -166,19 +153,12 @@ fleet_chart = line_chart(
 
 cbs = DATA["cbs_optimisation"]["steps"]
 cbs_chart = bar_chart(
-    [(s["stage"], s["seconds"], "") for s in cbs], "s", "cbs-optimisation", False
-)
-
-density = DATA["training_density"]
-density_chart = bar_chart(
-    [(d["config"], d["neighbours"], f'graph empty {d["empty_graph_pct"]}% of steps')
-     for d in density],
-    "", "training-density",
+    [(s["stage"], s["seconds"], "") for s in cbs], "s", "planner-throughput", False
 )
 
 # ── page ─────────────────────────────────────────────────────────────────
 
-HTML = f"""<title>MAPF-GNN — figures and measurements</title>
+HTML = f"""<title>Decentralised multi-robot path planning with graph neural networks</title>
 <style>
   :root {{
     color-scheme: light;
@@ -241,13 +221,13 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
     background: var(--paper);
     color: var(--ink);
     font-family: var(--sans);
-    line-height: 1.6;
+    line-height: 1.62;
     margin: 0;
     padding: 0 20px 120px;
     -webkit-font-smoothing: antialiased;
   }}
   .wrap {{ max-width: 860px; margin: 0 auto; }}
-  .col  {{ max-width: 62ch; }}
+  .col  {{ max-width: 64ch; }}
 
   header.masthead {{ padding: 72px 0 40px; border-bottom: 1px solid var(--rule); }}
   .eyebrow {{
@@ -260,12 +240,12 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
   }}
   .standfirst {{ font-size: 19px; color: var(--ink-2); margin: 0; max-width: 58ch; }}
 
-  section {{ padding-top: 64px; }}
+  section {{ padding-top: 68px; }}
   h2 {{
-    font-size: 25px; letter-spacing: -.012em; margin: 0 0 6px;
+    font-size: 26px; letter-spacing: -.013em; margin: 0 0 8px;
     text-wrap: balance; font-weight: 620;
   }}
-  h3 {{ font-size: 16px; margin: 34px 0 6px; font-weight: 620; }}
+  h3 {{ font-size: 16.5px; margin: 36px 0 6px; font-weight: 620; }}
   .kicker {{
     font-family: var(--mono); font-size: 11.5px; letter-spacing: .13em;
     text-transform: uppercase; color: var(--s1); margin: 0 0 12px;
@@ -274,6 +254,15 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
   p.lead {{ color: var(--ink); font-size: 17px; }}
   strong {{ color: var(--ink); font-weight: 620; }}
   code {{ font-family: var(--mono); font-size: .89em; color: var(--ink); }}
+  ul.body {{ color: var(--ink-2); padding-left: 20px; margin: 0 0 16px; max-width: 64ch; }}
+  ul.body li {{ margin-bottom: 8px; }}
+
+  .formula {{
+    font-family: var(--mono); font-size: 14.5px; color: var(--ink);
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 8px;
+    padding: 14px 18px; margin: 20px 0; overflow-x: auto; white-space: nowrap;
+  }}
+  .formula .an {{ color: var(--muted); }}
 
   figure {{
     margin: 30px 0 0; padding: 20px 20px 16px;
@@ -300,6 +289,9 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
   .bar-label {{ fill: var(--ink-2); font: 13px var(--sans); }}
   .bar-value {{ fill: var(--ink); font: 600 13px var(--mono); font-variant-numeric: tabular-nums; }}
   .bar-note {{ fill: var(--muted); font-weight: 400; }}
+  .dlabel {{ font: 12px var(--sans); fill: var(--ink-2); }}
+  .dlabel-mono {{ font: 11.5px var(--mono); fill: var(--muted); }}
+  .dbox {{ fill: var(--surface); stroke: var(--axis); stroke-width: 1.4; }}
 
   .legend {{ display: flex; flex-wrap: wrap; gap: 18px; margin: 4px 0 14px; padding: 0; list-style: none; }}
   .legend li {{ display: flex; align-items: center; gap: 7px; font-size: 13px; color: var(--ink-2); }}
@@ -311,12 +303,10 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
     padding: 16px 16px 14px;
   }}
   .stat .value {{
-    font-size: 30px; font-weight: 640; letter-spacing: -.02em; line-height: 1.1;
+    font-size: 29px; font-weight: 640; letter-spacing: -.02em; line-height: 1.1;
     font-variant-numeric: tabular-nums;
   }}
   .stat .label {{ font-size: 12.5px; color: var(--muted); margin-top: 6px; }}
-  .stat.up .value {{ color: var(--good); }}
-  .stat.down .value {{ color: var(--critical); }}
 
   .table-view {{ margin-top: 14px; }}
   .table-view summary {{
@@ -334,10 +324,15 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
   th {{ color: var(--muted); font-weight: 600; font-size: 12px; }}
   td {{ color: var(--ink-2); }}
 
-  .callout {{
-    border-left: 3px solid var(--s2); padding: 2px 0 2px 18px; margin: 26px 0;
-  }}
+  .callout {{ border-left: 3px solid var(--s1); padding: 2px 0 2px 18px; margin: 26px 0; }}
   .callout p:last-child {{ margin-bottom: 0; }}
+
+  .next {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; margin-top: 26px; }}
+  .next article {{
+    background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; padding: 18px;
+  }}
+  .next h4 {{ margin: 0 0 8px; font-size: 15.5px; font-weight: 620; }}
+  .next p {{ margin: 0; font-size: 14px; }}
 
   :focus-visible {{ outline: 2px solid var(--s1); outline-offset: 3px; border-radius: 3px; }}
   @media (prefers-reduced-motion: reduce) {{ * {{ animation: none !important; transition: none !important; }} }}
@@ -347,120 +342,292 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
 <div class="wrap">
 
 <header class="masthead">
-  <p class="eyebrow">MAPF-GNN · figure sheet</p>
-  <h1>Robots that learn to talk — and what it took to measure that honestly</h1>
-  <p class="standfirst">A replication of decentralised multi-robot path planning with graph neural
-  networks. Every number below was measured in the repository: 200 episodes per point, seed 42,
-  on an RTX 5070&nbsp;Ti.</p>
+  <p class="eyebrow">Multi-robot path finding · graph neural networks</p>
+  <h1>Robots that learn to talk their way through a crowd</h1>
+  <p class="standfirst">A decentralised planner where each robot sees a 5×5 patch of the world,
+  exchanges one vector with whoever is nearby, and picks a move. Trained by imitating a centralised
+  planner on five robots; it runs a hundred.</p>
 </header>
 
 <section>
-  <p class="kicker">The result, animated</p>
-  <h2>Thirty robots, one instance, two policies</h2>
+  <p class="kicker">The problem</p>
+  <h2>Coordination without a coordinator</h2>
   <div class="col">
-    <p class="lead">Both policies were trained on the same expert demonstrations and see the same
-    5×5 patch of the world. The only difference is whether a robot may hear from its neighbours.</p>
-    <p>Colour is state, not identity: <span style="color:var(--s1)">blue</span> is moving,
-    <span style="color:var(--good)">green</span> has arrived,
-    <span style="color:var(--critical)">red</span> has not moved for six steps. Thin lines are the
-    communication graph the network actually consumed at that step.</p>
+    <p class="lead">Give every robot its own goal in a shared, cluttered space and the joint problem
+    explodes: five robots on a 28×28 grid have about 3×10<sup>14</sup> joint configurations, and
+    optimal multi-agent path finding is NP-hard.</p>
+    <p>Excellent optimal solvers exist, but they are all <strong>centralised</strong> — one process
+    needs every robot's position, every goal, and the whole map, simultaneously. Real fleets are not
+    like that. Each robot sees a few metres, talks to whoever is in range, and has to decide now.</p>
+    <p>So the question is whether a robot can learn to <em>behave</em> as though it had a global
+    planner, using only a local view and a few messages from its neighbours.</p>
   </div>
   <figure class="plain">
-    <img src="{gif('compare_30agents.gif')}" alt="Side-by-side animation of thirty robots. The
-    non-communicating policy accumulates a large cluster of stalled robots; the communicating
-    policy resolves most of them.">
-    <figcaption>Same instance, same start states. Without communication the fleet forms a
-    seven-robot deadlock that never clears — 17 of 30 arrive. With communication, 27 of 30 arrive.
-    The stalled cluster is the failure mode that dominates every large-fleet number in this page.</figcaption>
+    <img src="{gif('compare_30agents.gif')}" alt="Two panels of thirty robots crossing a grid. In
+    the left panel, which has no communication, a large cluster of robots stalls. In the right panel
+    the same robots with communication mostly reach their goals.">
+    <figcaption>Thirty robots, one instance, two policies trained on identical demonstrations. The
+    only difference is whether a robot may hear from its neighbours. Blue is moving, green has
+    arrived, red has not moved in six steps; thin lines are the live communication graph.</figcaption>
   </figure>
 </section>
 
 <section>
-  <p class="kicker">The thing that was broken</p>
-  <h2>The policy was cloning a trajectory the expert never drove</h2>
+  <p class="kicker">The method · 1</p>
+  <h2>What one robot knows</h2>
   <div class="col">
-    <p class="lead">Before any of the scaling questions could be asked, the training data had to
-    actually contain expert behaviour. It did not.</p>
-    <p>The recorder replayed each solved instance through the environment to capture what the expert
-    saw — but dropped the expert's first action before replaying. Every stored observation came from
-    a path that had already diverged.</p>
+    <p class="lead">Each robot receives a 5×5 patch centred on itself, in two channels: the local map
+    (obstacles and other robots) and its own goal. Fifty numbers per robot per timestep.</p>
+    <p>Which raises the obvious problem — the board is 28×28 and the patch is 5×5, so
+    <strong>the goal is almost never inside the field of view</strong>. Leave that channel empty and
+    the robot has no idea which way to head, and imitation cannot work: the expert's action depends
+    on something the network cannot see.</p>
+    <p>The fix is to project the goal onto the edge of the patch. The robot doesn't learn
+    <em>where</em> its goal is; it learns <em>which way</em> it lies.</p>
   </div>
 
   <figure>
-    <svg viewBox="0 0 720 220" role="img" class="chart"
-         aria-label="The recorder applied the expert's second action from the first state, so the
-         replayed path left the expert's route immediately.">
+    <svg viewBox="0 0 720 250" role="img" class="chart"
+         aria-label="A goal outside the 5 by 5 field of view is projected onto the edge cell nearest
+         its true direction, so the observation encodes a bearing rather than a position.">
       <defs>
-        <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <polygon points="0,0 10,5 0,10" fill="currentColor"/>
-        </marker>
-        <marker id="ar-bad" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
-          <polygon points="0,0 10,5 0,10" fill="#d03b3b"/>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 10,5 0,10" fill="var(--s2)"/>
         </marker>
       </defs>
+      <text x="0" y="16" class="dlabel-mono">WORLD · 28 × 28</text>
+      <rect x="0" y="30" width="200" height="200" class="dbox" rx="4"/>
+      <rect x="60" y="120" width="60" height="60" fill="none" stroke="var(--s1)" stroke-width="2" rx="3"/>
+      <circle cx="90" cy="150" r="8" fill="var(--s1)"/>
+      <text x="90" y="200" text-anchor="middle" class="dlabel">robot</text>
+      <circle cx="168" cy="66" r="7" fill="none" stroke="var(--s2)" stroke-width="2.4"/>
+      <text x="168" y="52" text-anchor="middle" class="dlabel" fill="var(--s2)">goal</text>
+      <line x1="99" y1="141" x2="158" y2="76" stroke="var(--s2)" stroke-width="1.6"
+            stroke-dasharray="4 4" marker-end="url(#a1)"/>
 
-      <text x="0" y="16" class="axis-title" fill="var(--muted)">EXPERT (CBS)</text>
-      <g color="var(--ink-2)">
-        <circle cx="70" cy="58" r="15" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <text x="70" y="63" text-anchor="middle" class="tick" fill="var(--ink)">s₀</text>
-        <line x1="87" y1="58" x2="163" y2="58" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
-        <text x="125" y="48" text-anchor="middle" class="tick" fill="var(--ink-2)">a₀</text>
-        <circle cx="180" cy="58" r="15" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <text x="180" y="63" text-anchor="middle" class="tick" fill="var(--ink)">s₁</text>
-        <line x1="197" y1="58" x2="273" y2="58" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
-        <text x="235" y="48" text-anchor="middle" class="tick" fill="var(--ink-2)">a₁</text>
-        <circle cx="290" cy="58" r="15" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <text x="290" y="63" text-anchor="middle" class="tick" fill="var(--ink)">s₂</text>
-        <line x1="307" y1="58" x2="383" y2="58" stroke="currentColor" stroke-width="1.6" marker-end="url(#ar)"/>
-        <text x="345" y="48" text-anchor="middle" class="tick" fill="var(--ink-2)">a₂</text>
-        <circle cx="400" cy="58" r="15" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <text x="400" y="63" text-anchor="middle" class="tick" fill="var(--ink)">s₃</text>
+      <text x="300" y="16" class="dlabel-mono">WHAT THE NETWORK SEES · 5 × 5</text>
+      <g>
+        <rect x="300" y="30" width="150" height="150" class="dbox" rx="4"/>
+        <line x1="330" y1="30" x2="330" y2="180" class="grid"/>
+        <line x1="360" y1="30" x2="360" y2="180" class="grid"/>
+        <line x1="390" y1="30" x2="390" y2="180" class="grid"/>
+        <line x1="420" y1="30" x2="420" y2="180" class="grid"/>
+        <line x1="300" y1="60" x2="450" y2="60" class="grid"/>
+        <line x1="300" y1="90" x2="450" y2="90" class="grid"/>
+        <line x1="300" y1="120" x2="450" y2="120" class="grid"/>
+        <line x1="300" y1="150" x2="450" y2="150" class="grid"/>
+        <circle cx="375" cy="105" r="9" fill="var(--s1)"/>
+        <rect x="422" y="32" width="26" height="26" fill="var(--s2)" opacity=".9" rx="3"/>
       </g>
+      <text x="300" y="200" class="dlabel">goal marker pinned to the north-east edge</text>
+      <text x="300" y="220" class="dlabel-mono">channel 0 map · channel 1 goal bearing</text>
 
-      <text x="0" y="128" class="axis-title" fill="var(--muted)">RECORDED</text>
-      <g color="var(--ink-2)">
-        <circle cx="70" cy="170" r="15" fill="none" stroke="currentColor" stroke-width="1.6"/>
-        <text x="70" y="175" text-anchor="middle" class="tick" fill="var(--ink)">s₀</text>
-        <line x1="87" y1="170" x2="163" y2="170" stroke="#d03b3b" stroke-width="2" marker-end="url(#ar-bad)"/>
-        <text x="125" y="160" text-anchor="middle" class="tick" fill="#d03b3b">a₁</text>
-        <circle cx="180" cy="170" r="15" fill="none" stroke="#d03b3b" stroke-width="1.8" stroke-dasharray="3 3"/>
-        <text x="180" y="175" text-anchor="middle" class="tick" fill="#d03b3b">s?</text>
-        <line x1="197" y1="170" x2="273" y2="170" stroke="#d03b3b" stroke-width="2" marker-end="url(#ar-bad)"/>
-        <text x="235" y="160" text-anchor="middle" class="tick" fill="#d03b3b">a₂</text>
-        <circle cx="290" cy="170" r="15" fill="none" stroke="#d03b3b" stroke-width="1.8" stroke-dasharray="3 3"/>
-        <text x="290" y="175" text-anchor="middle" class="tick" fill="#d03b3b">s?</text>
-        <line x1="307" y1="170" x2="383" y2="170" stroke="#d03b3b" stroke-width="2" marker-end="url(#ar-bad)"/>
-        <text x="345" y="160" text-anchor="middle" class="tick" fill="#d03b3b">a₃</text>
-        <circle cx="400" cy="170" r="15" fill="none" stroke="#d03b3b" stroke-width="1.8" stroke-dasharray="3 3"/>
-        <text x="400" y="175" text-anchor="middle" class="tick" fill="#d03b3b">s?</text>
-      </g>
-
-      <line x1="70" y1="80" x2="70" y2="148" stroke="var(--axis)" stroke-width="1" stroke-dasharray="2 4"/>
-      <text x="440" y="120" class="tick" fill="var(--muted)">
-        <tspan x="440" dy="0">only the first state is shared;</tspan>
-        <tspan x="440" dy="17">every later pair is off the expert path</tspan>
-      </text>
-      <text x="440" y="58" class="tick" fill="var(--good)">31 of 31 steps match</text>
-      <text x="440" y="170" class="tick" fill="#d03b3b">1 of 30 steps match</text>
+      <text x="490" y="96" class="dlabel" fill="var(--ink)">A bearing, not a position.</text>
+      <text x="490" y="118" class="dlabel">The observation stays the same</text>
+      <text x="490" y="136" class="dlabel">size on any board, so the policy</text>
+      <text x="490" y="154" class="dlabel">transfers across map sizes.</text>
     </svg>
-    <figcaption>Replaying the stored actions against the CBS schedule confirmed it: unshifted, all
-    31 steps reproduce the expert exactly; as recorded, one did.</figcaption>
+    <figcaption>Projecting the goal onto the patch boundary makes the observation independent of the
+    map's dimensions — the same trick that lets a policy trained on 20×20 run on 63×63.</figcaption>
+  </figure>
+</section>
+
+<section>
+  <p class="kicker">The method · 2</p>
+  <h2>Communication as a graph convolution</h2>
+  <div class="col">
+    <p class="lead">Robots within sensing range form a graph, capped at the four nearest neighbours
+    so a robot in a crowd doesn't average its message into mush — and so a real radio has a bounded
+    bandwidth to budget for.</p>
+    <p>That graph changes every timestep, because the robots move. It is an <em>input</em>, not a
+    structure the network learns once.</p>
+    <p>A small CNN turns each robot's patch into a 64-dimensional feature. Then a graph convolution
+    blends each robot's features with its neighbours', normalised so a well-connected robot in a
+    crowd doesn't simply accumulate a larger vector than an isolated one:</p>
+  </div>
+
+  <div class="formula">H' = σ( Σ<sub>k=0..K-1</sub> Ã<sup>k</sup> H W<sub>k</sub> )
+    <span class="an">   where  Ã = D<sup>-1/2</sup>(A + I)D<sup>-1/2</sup></span></div>
+
+  <div class="col">
+    <p>The exponent is the whole idea, and it has a physical reading: <strong>K is the number of
+    communication rounds per decision.</strong> Multiply by Ã once and a robot has heard from the
+    robots it can see. Twice, and it has heard about robots it cannot see, relayed by the ones it
+    can.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 720 240" role="img" class="chart"
+         aria-label="With one hop a robot uses only its own observation; with two it hears its
+         direct neighbours; with three, information relays from robots it cannot see.">
+      <defs>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+          <polygon points="0,0 10,5 0,10" fill="var(--s1)"/>
+        </marker>
+      </defs>
+      <g>
+        <text x="0" y="18" class="dlabel-mono">K = 1 · OWN VIEW</text>
+        <circle cx="40" cy="70" r="16" fill="var(--s1)"/><text x="40" y="75" text-anchor="middle" class="tick" fill="#fff">A</text>
+        <circle cx="120" cy="70" r="16" class="dbox"/><text x="120" y="75" text-anchor="middle" class="tick">B</text>
+        <circle cx="200" cy="70" r="16" class="dbox"/><text x="200" y="75" text-anchor="middle" class="tick">C</text>
+        <line x1="56" y1="70" x2="104" y2="70" stroke="var(--axis)" stroke-width="1.4"/>
+        <line x1="136" y1="70" x2="184" y2="70" stroke="var(--axis)" stroke-width="1.4"/>
+        <text x="0" y="118" class="dlabel">A knows only what A can see</text>
+      </g>
+      <g transform="translate(250,0)">
+        <text x="0" y="18" class="dlabel-mono">K = 2 · ONE EXCHANGE</text>
+        <circle cx="40" cy="70" r="16" fill="var(--s1)"/><text x="40" y="75" text-anchor="middle" class="tick" fill="#fff">A</text>
+        <circle cx="120" cy="70" r="16" fill="var(--s1)" opacity=".55"/><text x="120" y="75" text-anchor="middle" class="tick" fill="#fff">B</text>
+        <circle cx="200" cy="70" r="16" class="dbox"/><text x="200" y="75" text-anchor="middle" class="tick">C</text>
+        <line x1="104" y1="70" x2="58" y2="70" stroke="var(--s1)" stroke-width="2" marker-end="url(#a2)"/>
+        <line x1="136" y1="70" x2="184" y2="70" stroke="var(--axis)" stroke-width="1.4"/>
+        <text x="0" y="118" class="dlabel">B's observation reaches A</text>
+      </g>
+      <g transform="translate(0,140)">
+        <text x="0" y="18" class="dlabel-mono">K = 3 · RELAYED</text>
+        <circle cx="40" cy="70" r="16" fill="var(--s1)"/><text x="40" y="75" text-anchor="middle" class="tick" fill="#fff">A</text>
+        <circle cx="120" cy="70" r="16" fill="var(--s1)" opacity=".55"/><text x="120" y="75" text-anchor="middle" class="tick" fill="#fff">B</text>
+        <circle cx="200" cy="70" r="16" fill="var(--s1)" opacity=".3"/><text x="200" y="75" text-anchor="middle" class="tick">C</text>
+        <line x1="104" y1="70" x2="58" y2="70" stroke="var(--s1)" stroke-width="2" marker-end="url(#a2)"/>
+        <line x1="184" y1="70" x2="138" y2="70" stroke="var(--s1)" stroke-width="2" marker-end="url(#a2)"/>
+        <text x="0" y="118" class="dlabel">A learns about C — which it cannot see — through B</text>
+      </g>
+      <text x="250" y="178" class="dlabel" fill="var(--ink)">Larger K buys context.</text>
+      <text x="250" y="198" class="dlabel">It also costs a round of radio traffic</text>
+      <text x="250" y="216" class="dlabel">and latency inside every decision.</text>
+    </svg>
+    <figcaption>K sets how far information travels per decision. Every robot runs the same weights,
+    so the fleet size is never baked into the network.</figcaption>
   </figure>
 
-  <div class="stats">
-    <div class="stat up"><div class="value">14% → 75%</div><div class="label">Instances fully solved, before and after the data fixes</div></div>
-    <div class="stat"><div class="value">4,945 → 30,727</div><div class="label">Usable training samples</div></div>
-    <div class="stat"><div class="value">5 of ~31</div><div class="label">Timesteps per episode the loader had been using</div></div>
+  <div class="col">
+    <p>Each robot's post-communication feature then goes through a small MLP producing five logits —
+    stay, up, down, left, right. Weights are shared across robots, which is precisely why the trained
+    policy runs on any number of them.</p>
   </div>
 </section>
 
 <section>
-  <p class="kicker">Does it scale</p>
-  <h2>Trained on five robots, run on a hundred</h2>
+  <p class="kicker">The method · 3</p>
+  <h2>Learning from a planner that cheats</h2>
   <div class="col">
-    <p class="lead">Every weight is shared across robots and every observation is local, so the same
-    policy runs on any fleet size. The board grows with the fleet here, holding robots-per-cell
-    fixed — otherwise "more robots" and "more crowding" cannot be told apart.</p>
+    <p class="lead">The teacher is Conflict-Based Search: a two-level optimal solver. Every robot
+    plans its own shortest path with A*, ignoring the others; the high level then looks for
+    collisions and, when it finds one, branches into two subproblems — one forbidding each robot
+    from that cell at that time — and replans.</p>
+    <p>It only pays for coordination where coordination is needed. In an empty warehouse it is barely
+    more than n independent A* searches; in a tight corridor the tree explodes, which is the
+    NP-hardness showing up.</p>
+    <p>Its solutions become demonstrations. Each solved instance is replayed through the simulator to
+    record, at every timestep, what each robot saw, who it could talk to, and what the expert did —
+    then the policy is fit by cross-entropy to that action.</p>
+  </div>
+
+  <figure>
+    <svg viewBox="0 0 720 210" role="img" class="chart"
+         aria-label="Instances are solved by conflict-based search, replayed to record observations,
+         graphs and expert actions, and used to fit the policy by imitation.">
+      <defs>
+        <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+          <polygon points="0,0 10,5 0,10" fill="var(--axis)"/>
+        </marker>
+      </defs>
+      <rect x="0" y="46" width="140" height="66" class="dbox" rx="6"/>
+      <text x="70" y="72" text-anchor="middle" class="dlabel" fill="var(--ink)">random instance</text>
+      <text x="70" y="92" text-anchor="middle" class="dlabel-mono">starts · goals · walls</text>
+
+      <line x1="146" y1="79" x2="188" y2="79" stroke="var(--axis)" stroke-width="1.6" marker-end="url(#a3)"/>
+
+      <rect x="194" y="46" width="140" height="66" class="dbox" rx="6"/>
+      <text x="264" y="72" text-anchor="middle" class="dlabel" fill="var(--ink)">CBS solves it</text>
+      <text x="264" y="92" text-anchor="middle" class="dlabel-mono">optimal, collision-free</text>
+
+      <line x1="340" y1="79" x2="382" y2="79" stroke="var(--axis)" stroke-width="1.6" marker-end="url(#a3)"/>
+
+      <rect x="388" y="46" width="150" height="66" class="dbox" rx="6"/>
+      <text x="463" y="72" text-anchor="middle" class="dlabel" fill="var(--ink)">replay &amp; record</text>
+      <text x="463" y="92" text-anchor="middle" class="dlabel-mono">patch · graph · action</text>
+
+      <line x1="544" y1="79" x2="586" y2="79" stroke="var(--axis)" stroke-width="1.6" marker-end="url(#a3)"/>
+
+      <rect x="592" y="46" width="128" height="66" rx="6" fill="none" stroke="var(--s1)" stroke-width="2"/>
+      <text x="656" y="72" text-anchor="middle" class="dlabel" fill="var(--s1)">policy</text>
+      <text x="656" y="92" text-anchor="middle" class="dlabel-mono">cross-entropy</text>
+
+      <text x="0" y="150" class="dlabel-mono">ONE SAMPLE</text>
+      <text x="0" y="174" class="dlabel">observation (N × 2 × 5 × 5)  ·  graph (N × N)  ·  expert action (N)</text>
+      <text x="0" y="194" class="dlabel">— the graph is an input, so a sample is valid for any N</text>
+    </svg>
+    <figcaption>The expert is centralised and offline; the student is decentralised and online. The
+    student never sees the global state — only what it would have at deployment.</figcaption>
+  </figure>
+
+  <div class="callout col">
+    <p><strong>The honest limitation of behaviour cloning:</strong> the policy only ever observes
+    states an <em>optimal</em> planner visits. Once it errs into a state CBS would never produce, it
+    has no training signal for recovering — which is exactly what a deadlock is.</p>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">The framework</p>
+  <h2>A training loop where the expensive parts are cheap</h2>
+  <div class="col">
+    <p class="lead">Two things dominate a project like this: generating demonstrations, and
+    evaluating what you trained. Both are worth engineering, because both are how fast you can ask a
+    question.</p>
+    <p>On the data side, the high-level search originally replanned <em>every</em> robot at each node
+    of the tree. Only the one that just received a constraint needs it — the rest of the parent's
+    paths are still valid. Conflict detection then went from comparing every pair at every timestep
+    to bucketing robots by cell.</p>
+  </div>
+
+  <figure>
+    {cbs_chart}
+    <figcaption>Mean seconds per instance, 20 robots on a 14×14 board. Solve and fail outcomes are
+    identical at every stage — this is the same search, not a cheaper approximation. Instances are
+    independent, so a process pool takes it a further 4.8× on 23 workers.</figcaption>
+  </figure>
+
+  <h3>Evaluation runs on the GPU, all episodes at once</h3>
+  <div class="col">
+    <p>The obvious way to evaluate steps one episode at a time, which makes every step a batch-1
+    forward pass. But this model costs <strong>0.65 ms at batch 1 and 0.61 ms at batch 128</strong> —
+    that is kernel launch latency, not arithmetic. The fix isn't a bigger card; it's giving the card
+    something to do.</p>
+    <p>So the simulator was rewritten to carry an episode dimension with every tensor on the device —
+    same action encoding, same collision resolution order, same field of view, same graph — and
+    hundreds of episodes now advance in a single forward pass.</p>
+  </div>
+
+  {table(
+      ["episodes", "one at a time", "batched", "speedup"],
+      [[e, f"{s:.2f}s", f"{b:.2f}s", f"{s/b:.0f}×"] for e, s, b in zip(
+          DATA["rollout_speedup"]["episodes"],
+          DATA["rollout_speedup"]["sequential_s"],
+          DATA["rollout_speedup"]["batched_s"])],
+      "Rollout throughput — both paths produce identical results")}
+
+  <div class="stats">
+    <div class="stat"><div class="value">0.22s</div><div class="label">A thousand evaluation episodes</div></div>
+    <div class="stat"><div class="value">12.4s</div><div class="label">Generating 1,153 solved instances</div></div>
+    <div class="stat"><div class="value">0.007s</div><div class="label">Median instance for the planner — the mean of 0.46s is a 5% tail</div></div>
+  </div>
+
+  <div class="col">
+    <p style="margin-top:22px">Cheap evaluation changes what you are willing to ask. A sweep across
+    five fleet sizes, three architectures and 200 episodes each is three thousand episodes — under a
+    second of compute, so the question gets asked instead of estimated.</p>
+  </div>
+</section>
+
+<section>
+  <p class="kicker">What it buys</p>
+  <h2>Trained on five robots, deployed on a hundred</h2>
+  <div class="col">
+    <p class="lead">Because every weight is shared across robots and every observation is local,
+    the fleet size is a property of the input, not the network. The board grows with the fleet below,
+    holding robots-per-cell fixed — otherwise "more robots" and "more crowding" cannot be separated.</p>
   </div>
   <figure>
     <ul class="legend">
@@ -469,9 +636,9 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
       <li><span class="swatch" style="background:var(--s3)"></span>GCN, K=3</li>
     </ul>
     {transfer_chart}
-    <figcaption>Fraction of robots reaching their goal at constant density, 200 episodes per point.
-    Communication is worth 6.6 points at ten robots and 13.2 at a hundred — the advantage grows
-    with the fleet, which is the claim the architecture is built on.</figcaption>
+    <figcaption>Fraction of robots reaching their goal, 200 episodes per point. Communication is
+    worth 6.6 points at ten robots and 13.2 at a hundred — the benefit is not fixed, it grows with
+    the fleet.</figcaption>
     {table(
         ["robots", "board", "neighbours", "No comms", "GCN K=3", "GNN message"],
         [[a, f"{b}×{b}", f"{n:.2f}",
@@ -481,119 +648,81 @@ HTML = f"""<title>MAPF-GNN — figures and measurements</title>
          for i, (a, b, n) in enumerate(zip(md["agents"], md["board"], md["neighbours"]))],
         "Show the numbers")}
   </figure>
-</section>
 
-<section>
-  <p class="kicker">A measurement that lied</p>
-  <h2>The horizon, not the policy</h2>
+  <h3>The expert does not need to be big</h3>
   <div class="col">
-    <p class="lead">The first version of that chart showed a collapse at large fleets. It was an
-    artifact of my own harness.</p>
-    <p>Episodes ran for a fixed 42 steps regardless of board size. That is harmless on a fixed
-    28×28 board — raising it to 200 moves results by under half a point — but under density matching
-    the board grows with the fleet, and a 63×63 board takes about ninety steps just to cross.
-    Robots were being scored on goals they could not physically reach.</p>
+    <p>This matters more than it first appears. The optimal planner is only tractable for small
+    teams, so if the policy needed hundred-robot demonstrations, the whole approach would be capped
+    by the thing it was meant to replace.</p>
+    <p>It doesn't. Doubling the expert team size — and separately quadrupling the training density —
+    lands within about three points everywhere, and the cheapest training set is the best at a
+    hundred robots.</p>
   </div>
   <figure>
     <ul class="legend">
-      <li><span class="swatch" style="background:var(--s1)"></span>horizon fits the board</li>
-      <li><span class="swatch" style="background:var(--s2)"></span>fixed 42 steps</li>
-    </ul>
-    {horizon_chart}
-    <figcaption>The same checkpoint, the same episodes, two horizons. At a hundred robots the
-    measured success rate moves from 40% to 67% — the difference between "the approach breaks down"
-    and "it degrades gently".</figcaption>
-  </figure>
-  <div class="callout col">
-    <p><strong>Worth stating plainly:</strong> this was not a subtle statistical issue. A stopwatch
-    set too short made a working policy look broken, and the shape of the wrong curve was entirely
-    plausible. Plausibility is not evidence.</p>
-  </div>
-</section>
-
-<section>
-  <p class="kicker">A hypothesis that died</p>
-  <h2>Bigger expert teams buy nothing</h2>
-  <div class="col">
-    <p class="lead">The expert planner is only tractable for small teams, so it matters whether the
-    policy needs to see large ones. It does not.</p>
-    <p>The five-robot training set leaves the communication graph completely empty for half of every
-    batch. That looked like an obvious defect — a communication mechanism trained mostly on nothing
-    — so I regenerated the data at four times the density, where the graph is never empty. It made
-    no difference at scale, and the sparsely trained model is if anything the best.</p>
-  </div>
-  <figure>
-    <ul class="legend">
-      <li><span class="swatch" style="background:var(--s1)"></span>trained on 5 robots</li>
-      <li><span class="swatch" style="background:var(--s2)"></span>trained on 10</li>
-      <li><span class="swatch" style="background:var(--s3)"></span>trained on 10, dense board</li>
+      <li><span class="swatch" style="background:var(--s1)"></span>expert used 5 robots</li>
+      <li><span class="swatch" style="background:var(--s2)"></span>expert used 10</li>
+      <li><span class="swatch" style="background:var(--s3)"></span>10 on a dense board</li>
     </ul>
     {fleet_chart}
-    <figcaption>Message-passing model, matched-density evaluation. Three training regimes land
-    within about three points of each other everywhere, and the cheapest one wins at a hundred
-    robots. Scaling comes from the architecture, not from the expert.</figcaption>
-  </figure>
-
-  <h3>Training density, for reference</h3>
-  <figure>
-    {density_chart}
-    <figcaption>Average neighbours per robot in each training set. Even the densest regime averages
-    about one neighbour — and quadrupling this changed nothing downstream.</figcaption>
+    <figcaption>Message-passing model, matched-density evaluation. Scaling comes from the
+    architecture — shared weights and local observations — not from the demonstrations.</figcaption>
   </figure>
 </section>
 
 <section>
-  <p class="kicker">Making the experiments affordable</p>
-  <h2>The expert planner was the bottleneck, not the GPU</h2>
+  <p class="kicker">Where it goes</p>
+  <h2>What this opens up</h2>
   <div class="col">
-    <p class="lead">Conflict-Based Search took 25.8 seconds per instance. Almost all of it was one
-    algorithmic mistake: every node of the high-level search replanned all N robots, when only the
-    one that just received a constraint needs it.</p>
-  </div>
-  <figure>
-    {cbs_chart}
-    <figcaption>Mean seconds per instance at 20 robots on a 14×14 board. Solve and fail outcomes are
-    identical at every step — nothing was traded away for speed. Total: 21.8× before parallelism,
-    and about 83× with it.</figcaption>
-  </figure>
-
-  <div class="stats">
-    <div class="stat"><div class="value">0.007s</div><div class="label">Median instance — the mean of 0.46s is a 5% tail</div></div>
-    <div class="stat"><div class="value">149×</div><div class="label">Rollouts, after batching episodes on the GPU</div></div>
-    <div class="stat"><div class="value">12×</div><div class="label">Forward pass, after removing the per-robot Python loop</div></div>
+    <p class="lead">The interesting part of a decentralised planner is not the benchmark number; it
+    is that the same trained weights drop onto a fleet of any size, and the compute per robot never
+    changes.</p>
   </div>
 
-  {table(
-      ["episodes", "sequential", "batched", "speedup"],
-      [[e, f"{s:.2f}s", f"{b:.2f}s", f"{s/b:.0f}×"] for e, s, b in zip(
-          DATA["rollout_speedup"]["episodes"],
-          DATA["rollout_speedup"]["sequential_s"],
-          DATA["rollout_speedup"]["batched_s"])],
-      "Rollout throughput, identical results on both paths")}
-
-  <div class="callout col">
-    <p><strong>The GPU was never the constraint.</strong> The model costs 0.65&nbsp;ms at batch 1 and
-    0.61&nbsp;ms at batch 128 — that is launch latency, not arithmetic. Batching the episodes, rather
-    than buying a bigger card, is what made a thousand evaluation episodes take 0.22 seconds.</p>
+  <div class="next">
+    <article>
+      <h4>Close the deadlock gap</h4>
+      <p>Beyond about twenty robots, the share of instances where <em>every</em> robot arrives falls
+      away — those are genuine jams, not slow progress. Run the policy, collect the states where it
+      sticks, solve those with the planner, fold them back into the data. The planner is now fast
+      enough for that loop to be routine.</p>
+    </article>
+    <article>
+      <h4>Let robots choose what to say</h4>
+      <p>Today a robot averages its neighbours with fixed weights. Attention over the graph lets it
+      weight the neighbour that actually matters — the one heading for the same corridor — which is
+      where the message-passing variant already shows an edge as fleets grow.</p>
+    </article>
+    <article>
+      <h4>Spend the communication budget wisely</h4>
+      <p>K is a dial between context and radio traffic. On real hardware the interesting question is
+      the cheapest K that holds performance at a given density, and whether a robot can decide for
+      itself when a round is worth sending.</p>
+    </article>
+    <article>
+      <h4>Leave the grid</h4>
+      <p>Nothing in the communication layer assumes a grid — only that robots have local
+      observations and a neighbourhood. Continuous positions, non-holonomic motion, and heterogeneous
+      teams with different sensors are changes to the encoder, not to the method.</p>
+    </article>
+    <article>
+      <h4>Imperfect communication</h4>
+      <p>The graph is currently exact and instantaneous. Dropped packets, latency, and limited
+      bandwidth are the difference between a simulation result and a deployable one — and the graph
+      being an input makes them straightforward to model.</p>
+    </article>
+    <article>
+      <h4>Warehouse-scale evaluation</h4>
+      <p>A thousand episodes take a fifth of a second, so the natural next step is sweeping densities
+      and map topologies rather than reporting a single configuration.</p>
+    </article>
   </div>
-</section>
 
-<section>
-  <p class="kicker">Still open</p>
-  <h2>Deadlock is the remaining failure</h2>
-  <div class="col">
-    <p class="lead">Beyond about twenty robots, the share of instances where <em>every</em> robot
-    arrives falls to zero, even with a generous horizon. Those are genuine deadlocks — the animation
-    at the top shows one forming.</p>
-    <p>Behaviour cloning gives the policy no signal for states the expert never visits, which is
-    exactly where a deadlocked robot stands. The original paper's answer is an online expert: run the
-    policy, collect the states where it jams, solve those with the planner, fold them back into the
-    dataset. At 125&nbsp;ms per instance, that loop is now cheap.</p>
-  </div>
-  <figure class="plain">
-    <img src="{gif('compare_12agents.gif')}" alt="Twelve robots on a small board, with and without
+  <figure class="plain" style="margin-top:34px">
+    <img src="{gif('compare_12agents.gif')}" alt="Twelve robots on a small board with and without
     communication.">
-    <figcaption>Twelve robots on a 20×20 board — the regime the expert data was generated in.</figcaption>
+    <figcaption>Twelve robots on 20×20 — the regime the demonstrations come from, and roughly the
+    largest team the optimal planner handles comfortably.</figcaption>
   </figure>
 </section>
 
