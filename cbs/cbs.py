@@ -23,30 +23,38 @@ from cbs.a_star import AStar
 
 
 class Location(object):
+    # Millions of these are created and hashed per instance, so the attribute
+    # dict and the repeated tuple build both show up in profiles.
+    __slots__ = ("x", "y", "_hash")
+
     def __init__(self, x=-1, y=-1):
         self.x = x
         self.y = y
+        self._hash = hash((x, y))
 
     def __eq__(self, other):
         return self.x == other.x and self.y == other.y
 
     def __hash__(self):
-        return hash((self.x, self.y))
+        return self._hash
 
     def __str__(self):
         return str((self.x, self.y))
 
 
 class State(object):
+    __slots__ = ("time", "location", "_hash")
+
     def __init__(self, time, location):
         self.time = time
         self.location = location
+        self._hash = hash((time, location.x, location.y))
 
     def __eq__(self, other):
         return self.time == other.time and self.location == other.location
 
     def __hash__(self):
-        return hash((self.time, self.location.x, self.location.y))
+        return self._hash
 
     def is_equal_except_time(self, state):
         return self.location == state.location
@@ -148,12 +156,18 @@ class Constraints(object):
 class Environment(object):
     def __init__(self, dimension, agents, obstacles):
         self.dimension = dimension
-        self.obstacles = obstacles
+        # Set of tuples: state_valid tests membership millions of times per
+        # instance, and a list makes each test a linear scan.
+        self.obstacles = {tuple(obstacle) for obstacle in obstacles}
         self.agents = agents
         self.agent_dict = {}
         self.make_agent_dict()
         self.constraints = Constraints()
         self.constraint_dict = {}
+        # Flattened constraint keys for the agent currently being planned, so
+        # validity checks never build a throwaway constraint object.
+        self._vertex_keys = frozenset()
+        self._edge_keys = frozenset()
         self.a_star = AStar(self)
 
     def get_neighbors(self, state):
@@ -182,36 +196,67 @@ class Environment(object):
         return neighbors
 
     def get_first_conflict(self, solution):
-        max_t = max([len(plan) for plan in solution.values()])
-        result = Conflict()
+        """First conflict in the plan, scanning time then agent pairs.
+
+        Comparing every pair at every timestep is O(T*N^2) and rebuilds State
+        objects for each comparison. Bucketing agents by cell finds the same
+        conflict in O(T*N): a vertex conflict is two agents in one cell, and an
+        edge conflict is two agents whose moves are the reverse of each other.
+        Conflicting pairs are reduced with min() so the pair returned is the one
+        combinations() would have reached first.
+        """
+        agents = list(solution.keys())
+        max_t = max(len(plan) for plan in solution.values())
+
+        # Pad each path to max_t + 1 with its final cell, which is what
+        # get_state does for agents that finished early.
+        coords = []
+        for agent in agents:
+            plan = solution[agent]
+            path = [(s.location.x, s.location.y) for s in plan]
+            path.extend([path[-1]] * (max_t + 1 - len(path)))
+            coords.append(path)
+
         for t in range(max_t):
-            for agent_1, agent_2 in combinations(solution.keys(), 2):
-                state_1 = self.get_state(agent_1, solution, t)
-                state_2 = self.get_state(agent_2, solution, t)
-                if state_1.is_equal_except_time(state_2):
-                    result.time = t
-                    result.type = Conflict.VERTEX
-                    result.location_1 = state_1.location
-                    result.agent_1 = agent_1
-                    result.agent_2 = agent_2
-                    return result
+            occupied = {}
+            pair = None
+            for j in range(len(agents)):
+                cell = coords[j][t]
+                i = occupied.get(cell)
+                if i is None:
+                    occupied[cell] = j
+                elif pair is None or (i, j) < pair:
+                    pair = (i, j)
+            if pair is not None:
+                i, j = pair
+                result = Conflict()
+                result.time = t
+                result.type = Conflict.VERTEX
+                result.location_1 = Location(*coords[i][t])
+                result.agent_1 = agents[i]
+                result.agent_2 = agents[j]
+                return result
 
-            for agent_1, agent_2 in combinations(solution.keys(), 2):
-                state_1a = self.get_state(agent_1, solution, t)
-                state_1b = self.get_state(agent_1, solution, t + 1)
-                state_2a = self.get_state(agent_2, solution, t)
-                state_2b = self.get_state(agent_2, solution, t + 1)
-
-                if state_1a.is_equal_except_time(
-                    state_2b
-                ) and state_1b.is_equal_except_time(state_2a):
-                    result.time = t
-                    result.type = Conflict.EDGE
-                    result.agent_1 = agent_1
-                    result.agent_2 = agent_2
-                    result.location_1 = state_1a.location
-                    result.location_2 = state_1b.location
-                    return result
+            # No vertex conflict at t, so every agent occupies a distinct cell
+            # and keying moves by their origin is unambiguous.
+            moves = {}
+            pair = None
+            for j in range(len(agents)):
+                origin, destination = coords[j][t], coords[j][t + 1]
+                i = moves.get((destination, origin))
+                if i is not None and (pair is None or (i, j) < pair):
+                    pair = (i, j)
+                moves[(origin, destination)] = j
+            if pair is not None:
+                i, j = pair
+                result = Conflict()
+                result.time = t
+                result.type = Conflict.EDGE
+                result.agent_1 = agents[i]
+                result.agent_2 = agents[j]
+                result.location_1 = Location(*coords[i][t])
+                result.location_2 = Location(*coords[i][t + 1])
+                return result
         return False
 
     def create_constraints_from_conflict(self, conflict):
@@ -249,21 +294,22 @@ class Environment(object):
             return solution[agent_name][-1]
 
     def state_valid(self, state):
+        x, y = state.location.x, state.location.y
         return (
-            state.location.x >= 0
-            and state.location.x < self.dimension[0]
-            and state.location.y >= 0
-            and state.location.y < self.dimension[1]
-            and VertexConstraint(state.time, state.location)
-            not in self.constraints.vertex_constraints
-            and (state.location.x, state.location.y) not in self.obstacles
+            0 <= x < self.dimension[0]
+            and 0 <= y < self.dimension[1]
+            and (state.time, x, y) not in self._vertex_keys
+            and (x, y) not in self.obstacles
         )
 
     def transition_valid(self, state_1, state_2):
         return (
-            EdgeConstraint(state_1.time, state_1.location, state_2.location)
-            not in self.constraints.edge_constraints
-        )
+            state_1.time,
+            state_1.location.x,
+            state_1.location.y,
+            state_2.location.x,
+            state_2.location.y,
+        ) not in self._edge_keys
 
     def is_solution(self, agent_name):
         pass
@@ -289,12 +335,30 @@ class Environment(object):
     def compute_solution(self):
         solution = {}
         for agent in self.agent_dict.keys():
-            self.constraints = self.constraint_dict.setdefault(agent, Constraints())
-            local_solution = self.a_star.search(agent)
+            local_solution = self.compute_solution_for_agent(agent)
             if not local_solution:
                 return False
             solution.update({agent: local_solution})
         return solution
+
+    def compute_solution_for_agent(self, agent):
+        """Plan a single agent under the current constraint dict.
+
+        Only the agent that just received a constraint needs replanning; every
+        other path in the parent node is still valid and is inherited. Replanning
+        the whole fleet at each node multiplies the low-level search cost by the
+        number of agents.
+        """
+        self.constraints = self.constraint_dict.setdefault(agent, Constraints())
+        self._vertex_keys = frozenset(
+            (c.time, c.location.x, c.location.y)
+            for c in self.constraints.vertex_constraints
+        )
+        self._edge_keys = frozenset(
+            (c.time, c.location_1.x, c.location_1.y, c.location_2.x, c.location_2.y)
+            for c in self.constraints.edge_constraints
+        )
+        return self.a_star.search(agent)
 
     def compute_solution_cost(self, solution):
         return sum([len(path) for path in solution.values()])
@@ -395,10 +459,15 @@ class CBS(object):
                         new_node.constraint_dict[a] = P.constraint_dict[a]
 
                 self.env.constraint_dict = new_node.constraint_dict
-                new_node.solution = self.env.compute_solution()
+                new_path = self.env.compute_solution_for_agent(agent)
 
-                if not new_node.solution:
+                if not new_path:
                     continue
+
+                # Inherit every other agent's path from the parent; only this
+                # agent's constraints changed.
+                new_node.solution = P.solution.copy()
+                new_node.solution[agent] = new_path
 
                 new_node.cost = self.env.compute_solution_cost(new_node.solution)
 

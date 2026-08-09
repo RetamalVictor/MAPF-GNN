@@ -6,6 +6,8 @@ author: Victor Retamal
 """
 import sys
 import os
+import shutil
+from concurrent.futures import ProcessPoolExecutor
 from pathlib import Path
 import yaml
 import argparse
@@ -155,14 +157,41 @@ def data_gen(input_dict: Dict, output_path: Path) -> bool:
     return True
 
 
-def create_solutions(path: Path, num_cases: int, config: Dict):
+def _solve_case(job):
+    """Generate and solve one instance. Top-level so it survives pickling."""
+    index, path, config, seed = job
+    np.random.seed(seed)
+
+    inpt = gen_input(
+        tuple(config["map_shape"]),
+        config["nb_obstacles"],
+        config["nb_agents"],
+    )
+    if inpt is None:
+        return index, False
+
+    case_path = Path(path) / f"case_{index}"
+    if data_gen(inpt, case_path):
+        return index, True
+
+    if case_path.exists():
+        shutil.rmtree(case_path)
+    return index, False
+
+
+def create_solutions(path: Path, num_cases: int, config: Dict, workers: int = None):
     """
     Create multiple MAPF instances and their solutions.
+
+    Cases are independent, so they are solved across a process pool. CBS is a
+    branch-heavy search that spends its time in the interpreter, which means
+    threads would serialise on the GIL but processes scale with cores.
 
     Args:
         path: Base path for dataset
         num_cases: Number of cases to generate
         config: Configuration dictionary
+        workers: Process count; defaults to one per core, 1 disables the pool
     """
     path = Path(path)
     path.mkdir(parents=True, exist_ok=True)
@@ -173,34 +202,43 @@ def create_solutions(path: Path, num_cases: int, config: Dict):
 
     print(f"Generating solutions (starting from case {cases_ready})")
 
+    if workers is None:
+        workers = max(1, (os.cpu_count() or 2) - 1)
+    pending = list(range(cases_ready, num_cases))
+    if not pending:
+        print("Nothing to generate")
+        return
+
+    # Seed per case so a run is reproducible regardless of worker scheduling.
+    base_seed = config.get("seed", 0)
+    jobs = [(i, str(path), config, base_seed + i) for i in pending]
+
     successful = 0
     failed = 0
+    done = 0
 
-    for i in range(cases_ready, num_cases):
-        if i % 25 == 0:
-            print(f"Solution -- [{i}/{num_cases}] (Success: {successful}, Failed: {failed})")
+    def report():
+        if done % 25 == 0:
+            print(
+                f"Solution -- [{done}/{len(jobs)}] "
+                f"(Success: {successful}, Failed: {failed})",
+                flush=True,
+            )
 
-        # Generate random instance
-        inpt = gen_input(
-            tuple(config["map_shape"]),
-            config["nb_obstacles"],
-            config["nb_agents"]
-        )
-
-        if inpt is None:
-            failed += 1
-            continue
-
-        # Generate and save solution
-        case_path = path / f"case_{i}"
-        if data_gen(inpt, case_path):
-            successful += 1
-        else:
-            failed += 1
-            # Remove failed case directory
-            if case_path.exists():
-                import shutil
-                shutil.rmtree(case_path)
+    if workers == 1:
+        for job in jobs:
+            _, ok = _solve_case(job)
+            successful += ok
+            failed += not ok
+            done += 1
+            report()
+    else:
+        with ProcessPoolExecutor(max_workers=workers) as pool:
+            for _, ok in pool.map(_solve_case, jobs, chunksize=4):
+                successful += ok
+                failed += not ok
+                done += 1
+                report()
 
     print(f"Generation complete: {successful} successful, {failed} failed")
     print(f"Cases stored in {path}")
