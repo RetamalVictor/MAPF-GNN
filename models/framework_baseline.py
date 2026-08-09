@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from networks.utils_weights import weights_init
+from models.networks.utils_weights import weights_init
 import numpy as np
 from copy import copy
 
@@ -111,19 +111,13 @@ class Network(nn.Module):
         states.shape = (batch x agent  x channels x dimX x dimY)
         """
         batch_size = states.shape[0]
-        # This vector is only needed for the GNN
-        # feature_vector = torch.zeros(batch_size, self.compress_features_dim[-1], self.num_agents).to(self.config["device"])
-        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
-            self.config["device"]
+        # Every agent is independent here, so the whole fleet is one batched
+        # pass: looping costs a kernel launch per agent for no benefit.
+        flat_states = states.reshape(batch_size * self.num_agents, *states.shape[2:])
+        features = self.convLayers(flat_states)
+        encoded_feats = self.compressMLP(features.reshape(features.size(0), -1))
+        action_logits = self.actionMLP(encoded_feats).reshape(
+            batch_size, self.num_agents, self.num_actions
         )
-        for id_agent in range(self.num_agents):
-            agent_state = states[:, id_agent, :, :, :]
-            features = self.convLayers(agent_state)
-            features_flatten = features.view(features.size(0), -1)  # B x T*C*W*H
-            encoded_feats = self.compressMLP(features_flatten)
-            # feature_vector[:, :, id_agent] # B x F x N
-            encoded_feats_flat = encoded_feats.view(encoded_feats.size(0), -1)
-            action_agent = self.actionMLP(encoded_feats_flat)  # 1 x 5
-            action_logits[:, id_agent, :] = action_agent
 
         return action_logits

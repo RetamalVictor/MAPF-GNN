@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from networks.utils_weights import weights_init
-from networks.gnn import GCNLayer, MessagePassingLayer
+from models.networks.utils_weights import weights_init
+from models.networks.gnn import GCNLayer, MessagePassingLayer
 from copy import copy
 
 
@@ -134,30 +134,21 @@ class Network(nn.Module):
         gsos.shape = (batch x agent x agent)
         """
         batch_size = states.shape[0]
-        # This vector is only needed for the GNN
-        feature_vector = torch.zeros(
-            batch_size, self.compress_Features_dim[-1], self.num_agents
-        ).to(self.config["device"])
-        for id_agent in range(self.num_agents):
-            agent_state = states[:, id_agent, :, :, :]
-            features = self.convLayers(agent_state)
-            features_flatten = features.view(features.size(0), -1)  # B x T*C*W*H
-            encoded_feats = self.compressMLP(features_flatten)
-            encoded_feats_flat = encoded_feats.view(encoded_feats.size(0), -1)
-            feature_vector[:, :, id_agent] = encoded_feats_flat  # B x F x N
+        # Encode the whole fleet in one pass; see framework_gnn.py for why the
+        # per-agent loop is expensive on a model this small.
+        flat_states = states.reshape(batch_size * self.num_agents, *states.shape[2:])
+        features = self.convLayers(flat_states)
+        encoded_feats = self.compressMLP(features.reshape(features.size(0), -1))
+        feature_vector = encoded_feats.reshape(batch_size, self.num_agents, -1).permute(
+            0, 2, 1
+        )  # B x F x N
 
         for layer in range(self.nb_filter):
             self.GFL[layer * 2].addGSO(gso)
 
         features_shared = self.GFL(feature_vector)  # B x F x N
 
-        action_logits = torch.zeros(batch_size, self.num_agents, self.num_actions).to(
-            self.config["device"]
-        )
-        for id_agent in range(self.num_agents):
-            agent_shared = features_shared[:, :, id_agent]
-            action_agent = self.actionMLP(agent_shared)  # 1 x 5
-            action_logits[:, id_agent, :] = action_agent
+        action_logits = self.actionMLP(features_shared.permute(0, 2, 1))
 
         return action_logits
 

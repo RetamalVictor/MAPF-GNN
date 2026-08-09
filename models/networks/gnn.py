@@ -85,20 +85,13 @@ class GCNLayer(nn.Module):
         batch_size = node_feats.shape[0]
         # Create adjacency with self-loops (don't modify input)
         adj_matrix = self.adj_matrix + torch.eye(self.n_nodes, device=self.adj_matrix.device)
-        # Generating an empty D
-        D_mod = torch.zeros_like(adj_matrix)
 
-        # Filling it with the total number of neigh (plus self connections)
-        k = D_mod.size(1)
-        for i in range(batch_size):
-            D_mod[i].as_strided([k], [k + 1]).copy_(
-                adj_matrix[i].sum(axis=1).flatten()
-            )
-
-        # torch.fill_diagonal(D_mod, torch.tensor(adj_matrix.sum(axis=1)).flatten())
-        D_mod_invroot = torch.pow(D_mod, -0.5)
-        D_mod_invroot[D_mod_invroot == torch.inf] = 0
-        adj_matrix = D_mod_invroot @ adj_matrix @ D_mod_invroot
+        # Symmetric normalization D^-1/2 A D^-1/2. D is diagonal, so this is a
+        # row and column scaling: no need to materialize D or to loop over the
+        # batch to fill its diagonal one sample at a time.
+        deg_invroot = torch.pow(adj_matrix.sum(dim=2), -0.5)
+        deg_invroot = torch.nan_to_num(deg_invroot, posinf=0.0, neginf=0.0)
+        adj_matrix = adj_matrix * deg_invroot.unsqueeze(2) * deg_invroot.unsqueeze(1)
 
         # K-hops
         node_feats = node_feats.reshape([batch_size, self.in_features, self.n_nodes])
@@ -182,21 +175,13 @@ class MessagePassingLayer(nn.Module):
         """
         self.n_nodes = node_feats.shape[2]
         batch_size = node_feats.shape[0]
-        # self.adj_matrix += torch.eye(self.n_nodes)
-        # Generating an empty D
-        D_mod = torch.zeros_like(self.adj_matrix)
-
-        # Filling it with the total number of neigh (plus self connections)
-        k = D_mod.size(1)
-        for i in range(batch_size):
-            D_mod[i].as_strided([k], [k + 1]).copy_(
-                self.adj_matrix[i].sum(axis=1).flatten()
-            )
-
-        # torch.fill_diagonal(D_mod, torch.tensor(adj_matrix.sum(axis=1)).flatten())
-        D_mod_invroot = torch.pow(D_mod, -0.5)
-        D_mod_invroot[D_mod_invroot == torch.inf] = 0
-        adj_matrix = D_mod_invroot @ self.adj_matrix @ D_mod_invroot
+        # Symmetric normalization D^-1/2 A D^-1/2, computed as a row/column
+        # scaling rather than by filling a diagonal matrix per batch element.
+        deg_invroot = torch.pow(self.adj_matrix.sum(dim=2), -0.5)
+        deg_invroot = torch.nan_to_num(deg_invroot, posinf=0.0, neginf=0.0)
+        adj_matrix = (
+            self.adj_matrix * deg_invroot.unsqueeze(2) * deg_invroot.unsqueeze(1)
+        )
 
         node_feats_not_shared = copy(node_feats)
         node_feats_not_shared = node_feats.reshape(
