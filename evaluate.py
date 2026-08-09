@@ -18,6 +18,29 @@ import torch
 from grid.env_graph_gridv1 import GraphEnv, create_goals, create_obstacles
 
 
+# Settings that must match the ones a checkpoint was trained with. Architecture
+# keys change the shape of the weights; environment keys change the observations
+# and the communication graph the policy was fitted to.
+CHECKPOINT_OWNED_KEYS = (
+    "channels", "encoder_layers", "encoder_dims", "last_convs", "graph_filters",
+    "node_dims", "action_layers", "map_shape", "net_type", "msg_type",
+    "board_size", "num_agents", "obstacles", "sensing_range",
+)
+
+
+class _ConfigLoader(yaml.SafeLoader):
+    """SafeLoader that tolerates the python object tags older runs wrote out."""
+
+
+_ConfigLoader.add_multi_constructor(
+    "tag:yaml.org,2002:python/object/apply:", lambda loader, suffix, node: None
+)
+
+
+def _load_yaml(stream):
+    return yaml.load(stream, Loader=_ConfigLoader)
+
+
 # Terminal colors for better logging
 class Colors:
     HEADER = '\033[95m'
@@ -76,6 +99,8 @@ def parse_args():
                        help="Number of episodes to evaluate (overrides config)")
     parser.add_argument("--max-steps", type=int, default=None,
                        help="Maximum steps per episode (overrides config)")
+    parser.add_argument("--seed", type=int, default=42,
+                       help="Random seed for episode generation (reproducible results)")
 
     # Visualization
     parser.add_argument("--render", action="store_true", default=False,
@@ -128,6 +153,10 @@ class Evaluator:
 
     def __init__(self, args):
         self.args = args
+        # Episodes are built from random goals and obstacles; without a seed the
+        # same checkpoint scores differently on every run.
+        np.random.seed(args.seed)
+        torch.manual_seed(args.seed)
         self.config = self.load_config()
         self.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
         self.config["device"] = self.device
@@ -145,10 +174,36 @@ class Evaluator:
             log_info("Visualization enabled")
 
     def load_config(self):
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file.
+
+        If --model points at a checkpoint that ships its own config.yaml, the
+        architecture and environment settings are taken from that file. A model
+        evaluated on a board size or sensing range it was not trained on scores
+        far below its real performance, so the checkpoint's own settings win.
+        """
         log_info(f"Loading configuration from {self.args.config}")
         with open(self.args.config, "r") as f:
-            config = yaml.load(f, Loader=yaml.FullLoader)
+            config = _load_yaml(f)
+
+        if self.args.model:
+            ckpt_config = Path(self.args.model).parent / "config.yaml"
+            if ckpt_config.exists():
+                with open(ckpt_config, "r") as f:
+                    trained = _load_yaml(f)
+                mismatched = {
+                    k: (config.get(k), trained[k])
+                    for k in CHECKPOINT_OWNED_KEYS
+                    if k in trained and config.get(k) != trained[k]
+                }
+                for key, (_, trained_value) in mismatched.items():
+                    config[key] = trained_value
+                if mismatched:
+                    log_warning(
+                        f"Config differs from {ckpt_config}; using the trained values: "
+                        + ", ".join(
+                            f"{k}: {was} -> {now}" for k, (was, now) in mismatched.items()
+                        )
+                    )
 
         # Override config with command-line arguments
         if self.args.episodes is not None:
@@ -189,11 +244,15 @@ class Evaluator:
             if not model_path.exists():
                 model_path = Path("results") / exp_name / "model.pt"
 
-        if model_path.exists():
-            model.load_state_dict(torch.load(model_path, map_location=self.device))
-            log_success(f"Loaded model from {model_path}")
-        else:
-            log_warning(f"No model found at {model_path}, using random weights")
+        if not model_path.exists():
+            log_error(f"No model found at {model_path}")
+            raise FileNotFoundError(
+                f"No model found at {model_path}. Pass --model with a valid "
+                f"checkpoint path, or train one with train.py."
+            )
+
+        model.load_state_dict(torch.load(model_path, map_location=self.device))
+        log_success(f"Loaded model from {model_path}")
 
         model.eval()
         return model

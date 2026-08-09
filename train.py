@@ -37,16 +37,21 @@ if net_type == "baseline":
     from models.framework_baseline import Network
 
 elif net_type == "gnn":
-    # from models.framework_gnn import Network
-    from models.framework_gnn_message import Network
+    # msg_type selects the aggregation; evaluate.py resolves it the same way, so
+    # a checkpoint always loads back into the architecture that produced it.
+    if config.get("msg_type", "gcn") == "message":
+        from models.framework_gnn_message import Network
+    else:
+        from models.framework_gnn import Network
 
 
 results_dir = Path("results") / exp_name
 if not results_dir.exists():
     results_dir.mkdir(parents=True, exist_ok=True)
 
+# Dump a plain copy: torch.device does not round-trip through safe YAML loaders.
 with open(results_dir / "config.yaml", "w") as config_file:
-    yaml.dump(config, config_file)
+    yaml.safe_dump({k: v for k, v in config.items() if k != "device"}, config_file)
 
 if __name__ == "__main__":
     # Set seeds for reproducibility
@@ -84,7 +89,8 @@ if __name__ == "__main__":
             states = states.to(config["device"])
             trajectories = trajectories.to(config["device"])
             gso = gso.to(config["device"])
-            output = model(states, gso)
+            # The baseline has no communication stage and takes no graph.
+            output = model(states) if net_type == "baseline" else model(states, gso)
 
             # Efficient loss computation
             batch_size, n_agents, n_actions = output.shape
@@ -122,7 +128,7 @@ if __name__ == "__main__":
                     .to(config["device"])
                 )
                 with torch.no_grad():
-                    action = model(fov, gso)
+                    action = model(fov) if net_type == "baseline" else model(fov, gso)
                 action = action.cpu().squeeze(0).numpy()
                 action = np.argmax(action, axis=1)
                 obs, reward, done, info = env.step(action, emb)
