@@ -1,0 +1,111 @@
+{
+  "provenance": "All numbers measured in this repository on an RTX 5070 Ti Laptop (sm_120), torch 2.11.0+cu128, 24 logical cores. Transfer figures are 200 episodes per point, seed 42.",
+
+  "pipeline_fixes": {
+    "note": "Complete-success rate on 100 seeded episodes, gnn_k3, before and after the data-pipeline corrections.",
+    "before": 0.14,
+    "after": 0.75,
+    "training_samples_before": 4945,
+    "training_samples_after": 30727,
+    "bugs": [
+      {"name": "Recorded rollouts skipped the expert's first action", "detail": "1 of 30 replayed steps matched the CBS schedule; unshifted matches 31 of 31."},
+      {"name": "Only the first 5 of ~31 timesteps used", "detail": "Policy never observed an agent approaching a goal."},
+      {"name": "States and actions offset by one", "detail": "Trained to predict the action that produced the state."},
+      {"name": "80% of samples unreachable", "detail": "__len__ returned case count, not sample count."},
+      {"name": "Self-loops double counted in training only", "detail": "Training graphs had 2 on the diagonal, evaluation 1."}
+    ]
+  },
+
+  "training_density": [
+    {"config": "5 agents / 28x28", "neighbours": 0.25, "empty_graph_pct": 51},
+    {"config": "10 agents / 28x28", "neighbours": 0.54, "empty_graph_pct": 5},
+    {"config": "10 agents / 20x20", "neighbours": 0.99, "empty_graph_pct": 0}
+  ],
+
+  "transfer_matched_density": {
+    "note": "Board grows as sqrt(agents) so agents-per-cell stays fixed. Horizon 300 steps. Fraction of agents reaching goal.",
+    "agents":   [10, 20, 40, 60, 100],
+    "board":    [20, 28, 40, 49, 63],
+    "neighbours": [1.07, 1.19, 1.30, 1.39, 1.53],
+    "series": {
+      "No communication": [0.787, 0.739, 0.650, 0.590, 0.534],
+      "GCN K=3":          [0.855, 0.820, 0.760, 0.709, 0.654],
+      "GNN message K=3":  [0.853, 0.834, 0.763, 0.726, 0.666]
+    }
+  },
+
+  "transfer_fixed_board": {
+    "note": "Board held at 28x28, so adding agents also crowds them. Horizon 42.",
+    "agents": [5, 10, 20, 40, 60],
+    "neighbours": [0.26, 0.63, 1.23, 2.36, 3.14],
+    "series": {
+      "No communication": [0.911, 0.852, 0.744, 0.579, 0.480],
+      "GNN message K=3":  [0.940, 0.905, 0.826, 0.668, 0.559]
+    }
+  },
+
+  "training_fleet_size": {
+    "note": "Does training on more agents help? Matched-density evaluation, horizon 300, message-passing model.",
+    "agents": [10, 20, 40, 60, 100],
+    "series": {
+      "trained on 5 (28x28)":  [0.855, 0.834, 0.787, 0.741, 0.695],
+      "trained on 10 (28x28)": [0.866, 0.816, 0.759, 0.726, 0.665],
+      "trained on 10 (20x20)": [0.853, 0.834, 0.763, 0.726, 0.666]
+    }
+  },
+
+  "horizon_artifact": {
+    "note": "A fixed 42-step horizon on a growing board scores agents on goals they cannot physically reach.",
+    "agents": [10, 20, 40, 60, 100],
+    "board": [20, 28, 40, 49, 63],
+    "series": {
+      "horizon 42":  [0.853, 0.819, 0.663, 0.544, 0.400],
+      "horizon 300": [0.853, 0.834, 0.763, 0.726, 0.666]
+    }
+  },
+
+  "cbs_optimisation": {
+    "note": "Mean seconds per instance, 20 agents on 14x14, 5 instances, identical solve/fail outcomes at every step.",
+    "steps": [
+      {"stage": "Baseline", "seconds": 25.77},
+      {"stage": "Replan only the constrained agent", "seconds": 2.38},
+      {"stage": "O(T*N) conflict detection", "seconds": 1.97},
+      {"stage": "No throwaway constraint objects", "seconds": 1.18}
+    ]
+  },
+
+  "cbs_tail": {
+    "note": "10 agents on 28x28, 60 instances. Difficulty is long tailed, so a time limit buys most of the speed for a few percent of the cases.",
+    "median_s": 0.007,
+    "mean_s": 0.462,
+    "p90_s": 0.030,
+    "p99_s": 10.969,
+    "max_s": 15.636,
+    "limits": [
+      {"limit": "none", "solved": 59, "of": 60, "ms_per_case": 461},
+      {"limit": "2.0s", "solved": 57, "of": 60, "ms_per_case": 125},
+      {"limit": "0.5s", "solved": 56, "of": 60, "ms_per_case": 43}
+    ]
+  },
+
+  "cbs_scaling": {
+    "note": "Instances solved out of 12 on a 28x28 board with 8 obstacles.",
+    "agents": [5, 10, 15, 20, 30],
+    "solved": [12, 11, 12, 11, 2]
+  },
+
+  "rollout_speedup": {
+    "note": "Identical episodes through both paths; results matched exactly every time.",
+    "episodes": [100, 500, 1000],
+    "sequential_s": [3.34, 18.28, 33.07],
+    "batched_s": [0.13, 0.12, 0.22]
+  },
+
+  "forward_pass": {
+    "note": "Per-forward milliseconds. The model is latency bound, not compute bound, until the batch gets large.",
+    "batch": [1, 128],
+    "per_agent_loop_ms": [2.064, 7.292],
+    "vectorised_ms": [0.650, 0.608],
+    "cuda_graph_note": "Capturing the forward in a CUDA graph gives 5.2x at 100 episodes (0.594 -> 0.114 ms) but only 1.1x at 1000 (0.776 -> 0.685 ms), because by then the GPU is doing real work."
+  }
+}

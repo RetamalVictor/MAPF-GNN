@@ -41,3 +41,6 @@ journal.md
 testbed.py
 *.log
 .DS_Store
+
+# Rendered figure sheet (regenerate with viz/build_page.py)
+viz/figures.html
