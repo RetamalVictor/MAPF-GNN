@@ -92,6 +92,9 @@ Numbered by build order. The first four carry the argument; the rest support it.
 |---|---|---|
 | D9 | **The distribution gap** | Two overlapping regions: states the expert visits, states the policy reaches. The non-overlapping part is where cloning has no signal — and where deadlock lives. This is the entire argument for the online expert, and it is one picture. |
 | D10 | **The OE loop** | train → roll out → collect failures → query CBS from the stuck state → merge → retrain. A cycle, not a pipeline; the arrow back is the whole idea. |
+| D11 | **The fixed point** | Two robots facing each other, both choosing the same cell, colliding, reverting — with the state arrow looping back on itself. The most important diagram in the post: it shows *why* a deterministic policy can never escape, and why no horizon helps. |
+| D12 | **Temperature sweep** | α against T, with the uniform-random control marked as a floor at zero. The control is the point: it proves the policy does the work and noise only breaks ties. |
+| D13 | **Where communication starts to matter** | α against fleet size, three architectures, at a fair horizon. Flat and indistinguishable to ~40 robots, then the no-communication line falls off a cliff at 100. |
 
 ### Animations already rendered (`viz/out/`)
 
@@ -140,6 +143,11 @@ same moments, which makes them section prompts rather than an FAQ appendix.
 11. *Which metric are we even reporting?* — success rate α (all robots home)
     versus fraction of robots home. They tell very different stories, and the
     literature uses α.
+12. *Why does the policy get permanently stuck?* — the fixed-point argument, which
+    became the centre of the post.
+13. *Would a world model or peer modelling help?* — the dynamics here are known,
+    so a world model buys little; peer modelling is the principled version of
+    what temperature does crudely.
 
 ---
 
@@ -154,7 +162,10 @@ same moments, which makes them section prompts rather than an FAQ appendix.
 7. **The framework** — making data generation and evaluation cheap enough to ask questions
 8. **Does it scale** — the generalisation matrix (D8)
 9. **The gap** — distribution shift (D9), the online expert (D10), before/after
-10. **Open questions** — the deck's two, plus communication budget
+10. **The fixed point** — 98% of failures were one frozen state (D11); sampling
+    as the fix, with the uniform-random control (D12)
+11. **What communication is actually worth** — the fair comparison (D13)
+12. **Open questions** — the deck's two, plus peer modelling and memory
 
 ---
 
@@ -166,3 +177,14 @@ same moments, which makes them section prompts rather than an FAQ appendix.
   horizon. The horizon in particular changes conclusions.
 - The post should say plainly which results are reproductions and which are this
   repository's own measurements.
+- Captions need **decoding** and **horizon** alongside episodes and seed. Both
+  changed conclusions in this project.
+- **Do not claim to beat the paper.** α = 0.98 at 40 robots is above their ~0.91,
+  but board scaling, obstacle density and timeout all differ. "Comparable, on our
+  own harness."
+- Keep the arc that actually happened: a plausible theory (the policy cannot
+  recover), a real but insufficient fix (the online expert), then the actual
+  cause (determinism). The middle step is not wasted — it measurably helps and it
+  composes with the fix.
+
+Full investigation in `findings.md`; every number in `viz/analysis.json`.
