@@ -90,6 +90,23 @@ def rollout(model, config, board, agents, obstacles, episodes, seed, device, max
     }
 
 
+def scenario(args, agents):
+    """Board size and obstacle count for a given fleet size.
+
+    Fixed board: adding agents also crowds them, which stresses the policy but
+    conflates team size with density. Matched density: the board grows as
+    sqrt(agents) so agents per cell, and obstacle coverage, stay put.
+    """
+    if not args.match_density:
+        return args.board, args.obstacles
+
+    base_agents = args.agents[0]
+    density = base_agents / (args.board ** 2)
+    board = max(args.board, int(round((agents / density) ** 0.5)))
+    coverage = args.obstacles / (args.board ** 2)
+    return board, max(1, int(round(coverage * board ** 2)))
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--models", nargs="+", required=True,
@@ -98,6 +115,11 @@ def main():
                         default=[5, 10, 20, 30, 40, 60])
     parser.add_argument("--board", type=int, default=28)
     parser.add_argument("--obstacles", type=int, default=8)
+    parser.add_argument("--match-density", action="store_true",
+                        help="Grow the board with the fleet so agents per cell "
+                             "stays at the first point's value. Without this, "
+                             "adding agents also crowds them, and the two "
+                             "effects cannot be told apart.")
     parser.add_argument("--episodes", type=int, default=200)
     parser.add_argument("--max-steps", type=int, default=None,
                         help="Override the episode horizon; crowded boards need "
@@ -124,22 +146,24 @@ def main():
 
         results[model_dir.name] = {}
         for agents in args.agents:
+            board, obstacles = scenario(args, agents)
             results[model_dir.name][agents] = rollout(
-                model, config, args.board, agents, args.obstacles,
+                model, config, board, agents, obstacles,
                 args.episodes, args.seed, device, max_steps,
             )
+            results[model_dir.name][agents]["board"] = board
 
     trained_on = args.agents[0]
     print(f"\nTrained on {trained_on} agents, board {args.board}x{args.board}, "
           f"{args.obstacles} obstacles, {args.episodes} episodes per point\n")
 
-    header = f"{'agents':<9}{'neigh':<9}" + "".join(f"{name:<22}" for name in results)
+    header = f"{'agents':<9}{'board':<8}{'neigh':<9}" + "".join(f"{name:<22}" for name in results)
     print(header)
-    print(f"{'':<9}{'':<9}" + "".join(f"{'complete':<11}{'at goal':<11}" for _ in results))
+    print(f"{'':<9}{'':<8}{'':<9}" + "".join(f"{'complete':<11}{'at goal':<11}" for _ in results))
     print("-" * len(header))
     for agents in args.agents:
         first = next(iter(results))
-        row = f"{agents:<9}{results[first][agents]['neighbours']:<9.2f}"
+        row = f"{agents:<9}{results[first][agents]['board']:<8}{results[first][agents]['neighbours']:<9.2f}"
         for name in results:
             r = results[name][agents]
             row += f"{r['complete']:<11.3f}{r['at_goal']:<11.3f}"

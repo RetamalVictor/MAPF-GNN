@@ -1,0 +1,40 @@
+exp_name: baseline_a10b28
+channels:
+- 16
+- 16
+- 16
+strides:
+- 1
+- 1
+- 1
+- 1
+- 1
+encoder_layers: 1
+last_convs:
+- 400
+encoder_dims:
+- 64
+action_layers: 1
+epochs: 50
+tests_episodes: 25
+net_type: baseline
+board_size:
+- 28
+- 28
+map_shape:
+- 5
+- 5
+num_agents: 10
+obstacles: 8
+max_steps: 32
+max_time: 32
+sensing_range: 4
+min_time: 1
+num_workers: 3
+batch_size: 128
+train:
+  root_dir: dataset/10_8_28
+  mode: train
+  min_time: 5
+  max_time_dl: 60
+  nb_agents: 10
