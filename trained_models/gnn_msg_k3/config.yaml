@@ -44,3 +44,4 @@ train:
   mode: train
   nb_agents: 5
   root_dir: dataset\5_8_28
+msg_type: message

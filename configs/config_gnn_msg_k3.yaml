@@ -1,0 +1,43 @@
+exp_name: 'gnn_msg_k3'
+
+# CNN
+channels: [16, 16, 16]
+strides: [1,1,1,1,1]
+
+# Encoder MLP
+encoder_layers: 1
+last_convs: [400]
+encoder_dims: [64]
+
+# GNN — 3-hop aggregation plus a self-importance term (MessagePassingLayer)
+graph_filters: [3]
+node_dims: [128]
+
+# Policy MLP
+action_layers: 1
+
+# Training
+epochs: 50
+tests_episodes: 25
+net_type: 'gnn'
+msg_type: 'message'
+
+# Simulation — must match the dataset in train.root_dir.
+board_size: [28,28]
+map_shape: [5,5]
+num_agents: 5
+obstacles: 8
+max_steps: 32
+max_time: 32
+sensing_range: 4
+
+# Data Loading
+min_time: 1
+num_workers: 3
+batch_size: 128
+train:
+    root_dir: 'dataset/5_8_28'
+    mode: 'train'
+    min_time: 5
+    max_time_dl: 60
+    nb_agents: 5
