@@ -29,13 +29,30 @@ class CreateDataset(data.Dataset):
             A case dir contains the states and trajectories of the agents
         """
         self.config = config[mode]
-        self.dir_path = self.config["root_dir"]
-        if mode == "valid":
-            self.dir_path = os.path.join(self.dir_path, "val")
-        elif mode == "train":
-            self.dir_path = os.path.join(self.dir_path, "train")
 
-        self.cases = sorted(os.listdir(self.dir_path))
+        # root_dir may be a single path or several. The online expert writes its
+        # relabelled cases to their own directory, and training on both means
+        # listing both rather than copying one into the other. case_caps limits
+        # how many cases each root contributes, which is how the share of
+        # online-expert data in the set is held down.
+        roots = self.config["root_dir"]
+        if isinstance(roots, (str, os.PathLike)):
+            roots = [roots]
+        caps = self.config.get("case_caps") or [None] * len(roots)
+
+        subdir = {"valid": "val", "train": "train"}.get(mode)
+        self.dir_paths = [
+            os.path.join(root, subdir) if subdir else str(root) for root in roots
+        ]
+        self.dir_path = self.dir_paths[0]
+
+        self.cases = []
+        for dir_path, cap in zip(self.dir_paths, caps):
+            names = sorted(os.listdir(dir_path))
+            if cap is not None:
+                names = names[:cap]
+            self.cases.extend(os.path.join(dir_path, name) for name in names)
+
         min_time = self.config["min_time"]
         # Optional cap on how much of each trajectory to keep. Cases run for ~30
         # steps on average, so a small cap here means the policy only ever sees
@@ -45,8 +62,7 @@ class CreateDataset(data.Dataset):
         states, trajectories, gsos = [], [], []
         self.count = 0
 
-        for case in self.cases:
-            case_dir = os.path.join(self.dir_path, case)
+        for case_dir in self.cases:
             if not os.path.exists(os.path.join(case_dir, "states.npy")):
                 continue
 
