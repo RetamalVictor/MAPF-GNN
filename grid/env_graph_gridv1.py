@@ -72,8 +72,10 @@ class GraphEnv(gym.Env):
             assert (
                 self.starting_positions.shape[0] == self.nb_agents
             ), f"Agents and positions are not equal"
-            self.positionX = self.starting_positions[:, 0]
-            self.positionY = self.starting_positions[:, 1]
+            # Copy: these are mutated in place while stepping, and a view would
+            # silently rewrite the caller's array.
+            self.positionX = self.starting_positions[:, 0].copy()
+            self.positionY = self.starting_positions[:, 1].copy()
         else:
             self.avilable_pos_x = np.arange(self.board_size)
             self.avilable_pos_y = np.arange(self.board_size)
