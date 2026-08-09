@@ -36,13 +36,29 @@ def make_env(pwd_path, config):
     return env
 
 
+def _case_dirs(path):
+    """Case directories that hold a parsed trajectory, in numeric order.
+
+    Cases that CBS failed to solve are skipped during generation, so the
+    numbering has gaps; iterating over range(len(cases)) would look for
+    directories that were never created.
+    """
+    names = [
+        name
+        for name in os.listdir(path)
+        if name.startswith("case_")
+        and os.path.exists(os.path.join(path, name, "trajectory.npy"))
+    ]
+    return sorted(names, key=lambda name: int(name.split("_")[1]))
+
+
 def record_env(path, config):
-    cases = os.listdir(path)
+    cases = _case_dirs(path)
     t = np.zeros(len(cases))
 
-    for i in range(len(cases) - 1):
+    for i, case in enumerate(cases):
         trayectory = np.load(
-            os.path.join(path, f"case_{i}", "trajectory.npy"), allow_pickle=True
+            os.path.join(path, case, "trajectory.npy"), allow_pickle=True
         )
         t[i] = trayectory.shape[1]
 
@@ -57,14 +73,13 @@ def record_env(path, config):
     # mx = int(np.max(t))
     # print(f"Max step: {mx}")
     print("Recording states...")
-    for timestep in range(len(cases) - 1):
-        agent_nb = trayectory.shape[0]
-        env = make_env(os.path.join(path, f"case_{timestep}"), config)
+    for timestep, case in enumerate(cases):
+        env = make_env(os.path.join(path, case), config)
         # mx = env.min_time
         trayectory = np.load(
-            os.path.join(path, f"case_{timestep}", "trajectory.npy"), allow_pickle=True
+            os.path.join(path, case, "trajectory.npy"), allow_pickle=True
         )
-        trayectory = trayectory[:, 1:]
+        agent_nb = trayectory.shape[0]
         recordings = np.zeros(
             (trayectory.shape[1], agent_nb, 2, 5, 5)
         )  # timestep, agents, channels of FOV, dimFOVx, dimFOVy
@@ -72,11 +87,12 @@ def record_env(path, config):
         assert (
             agent_nb == env.nb_agents
         ), rf"Trayectory has {agent_nb} agents, env expects {env.nb_agents}"
-        # if trayectory.shape[1] < mx:
-        #     continue
-        #     trayectory = np.pad(trayectory,[(0,0), (0, mx - trayectory.shape[1])], mode='constant')
         obs = env.reset()
         emb = np.ones(env.nb_agents)
+        # recordings[i] is the observation the expert saw when it chose
+        # trayectory[:, i]. Dropping the first action here (or writing the final
+        # observation back over the last slot) breaks that pairing, and the
+        # replayed path stops following the CBS solution from step one.
         for i in range(trayectory.shape[1]):
             recordings[i, :, :, :, :] = obs["fov"]
             adj_record[i, :, :, :] = obs["adj_matrix"]
@@ -84,13 +100,10 @@ def record_env(path, config):
             actions = trayectory[:, i]
             obs, _, _, _ = env.step(actions, emb)
 
-        recordings[i, :, :, :, :] = obs["fov"]
-        adj_record[i, :, :, :] = obs["adj_matrix"]
-
-        np.save(os.path.join(path, f"case_{timestep}", "states.npy"), recordings)
-        np.save(os.path.join(path, f"case_{timestep}", "gso.npy"), adj_record)
+        np.save(os.path.join(path, case, "states.npy"), recordings)
+        np.save(os.path.join(path, case, "gso.npy"), adj_record)
         np.save(
-            os.path.join(path, f"case_{timestep}", "trajectory_record.npy"), trayectory
+            os.path.join(path, case, "trajectory_record.npy"), trayectory
         )
         if timestep % 25 == 0:
             print(f"Recorded -- [{timestep}/{len(cases)}]")

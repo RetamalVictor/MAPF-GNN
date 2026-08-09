@@ -35,82 +35,68 @@ class CreateDataset(data.Dataset):
         elif mode == "train":
             self.dir_path = os.path.join(self.dir_path, "train")
 
-        self.cases = os.listdir(self.dir_path)
-        self.states = np.zeros(
-            (
-                len(self.cases),
-                self.config["min_time"],
-                self.config["nb_agents"],
-                2,
-                5,
-                5,
-            )
-        )  # case x time x agent x channels x dimX x dimy
-        self.trajectories = np.zeros(
-            (len(self.cases), self.config["min_time"], self.config["nb_agents"])
-        )  # case x time x agent
-        self.gsos = np.zeros(
-            (
-                len(self.cases),
-                self.config["min_time"],
-                self.config["nb_agents"],
-                self.config["nb_agents"],
-            )
-        )  # case x time x agent x nodes x nodes
+        self.cases = sorted(os.listdir(self.dir_path))
+        min_time = self.config["min_time"]
+        # Optional cap on how much of each trajectory to keep. Cases run for ~30
+        # steps on average, so a small cap here means the policy only ever sees
+        # the opening moves and never learns to approach a goal.
+        max_time = self.config.get("max_time_dl")
+
+        states, trajectories, gsos = [], [], []
         self.count = 0
 
-        for i, case in enumerate(self.cases):
-            if os.path.exists(os.path.join(self.dir_path, case, "states.npy")):
-                state = np.load(os.path.join(self.dir_path, case, "states.npy"))
-                state = state[1 : self.config["min_time"] + 1, :, :, :, :]
-                tray = np.load(
-                    os.path.join(self.dir_path, case, "trajectory_record.npy")
-                )
-                tray = tray[:, : self.config["min_time"]]
-                gso = np.load(os.path.join(self.dir_path, case, "gso.npy"))
-                gso = gso[
-                    : self.config["min_time"], 0, :, :
-                ]  # select the first agent since all agents have the same gso
-                gso = gso + np.eye(self.config["nb_agents"])  # add self loop
-                if (
-                    state.shape[0] < self.config["min_time"]
-                    or tray.shape[1] < self.config["min_time"]
-                ):
-                    continue
-                if (
-                    state.shape[0] > self.config["max_time_dl"]
-                    or tray.shape[1] > self.config["max_time_dl"]
-                ):
-                    continue
-                assert (
-                    state.shape[0] == tray.shape[1]
-                ), f"(before transform) Missmatch between states and trajectories: {state.shape[0]} != {tray.shape[1]}"
-                self.states[i, :, :, :, :, :] = state
-                # self.trajectories[i, :, :] = tray.reshape((self.config["max_time"], self.config["nb_agents"]))
-                self.trajectories[i, :, :] = tray.T
-                self.gsos[i, :, :, :] = gso
-                self.count += 1
+        for case in self.cases:
+            case_dir = os.path.join(self.dir_path, case)
+            if not os.path.exists(os.path.join(case_dir, "states.npy")):
+                continue
 
-        self.states = self.states[: self.count, :, :, :, :, :]
-        self.trajectories = self.trajectories[: self.count, :, :]
-        self.gsos = self.gsos[: self.count, :, :, :]
-        self.states = self.states.reshape((-1, self.config["nb_agents"], 2, 5, 5))
-        self.trajectories = self.trajectories.reshape((-1, self.config["nb_agents"]))
-        self.gsos = self.gsos.reshape(
-            (-1, self.config["nb_agents"], self.config["nb_agents"])
-        )
+            state = np.load(os.path.join(case_dir, "states.npy"))
+            tray = np.load(os.path.join(case_dir, "trajectory_record.npy"))
+            gso = np.load(os.path.join(case_dir, "gso.npy"))
+            # All agents record the same graph; keep one copy.
+            gso = gso[:, 0, :, :]
+
+            # states[t] is the observation the expert acted on at step t, so it
+            # pairs with tray[:, t]. Any offset here trains the policy to predict
+            # the action that produced the current state instead of the next one.
+            steps = min(state.shape[0], tray.shape[1], gso.shape[0])
+            if steps < min_time:
+                continue
+            if max_time:
+                steps = min(steps, max_time)
+
+            states.append(state[:steps])
+            trajectories.append(tray[:, :steps].T)
+            # No self-loop added here: the GCN layer adds its own, and evaluation
+            # feeds the raw adjacency straight from the environment.
+            gsos.append(gso[:steps])
+            self.count += 1
+
+        if not self.count:
+            raise RuntimeError(f"No recorded cases found in {self.dir_path}")
+
+        self.states = np.concatenate(states, axis=0)
+        self.trajectories = np.concatenate(trajectories, axis=0)
+        self.gsos = np.concatenate(gsos, axis=0)
+
         assert (
-            self.states.shape[0] == self.trajectories.shape[0]
-        ), f"(after transform) Missmatch between states and trajectories: {state.shape[0]} != {tray.shape[0]}"
+            self.states.shape[0] == self.trajectories.shape[0] == self.gsos.shape[0]
+        ), (
+            "Mismatch between states, trajectories and graphs: "
+            f"{self.states.shape[0]} / {self.trajectories.shape[0]} / {self.gsos.shape[0]}"
+        )
         print(f"Zeros: {self.statistics()}")
-        print(f"Loaded {self.count} cases")
+        print(f"Loaded {self.count} cases ({self.states.shape[0]} timesteps)")
 
     def statistics(self):
         zeros = np.count_nonzero(self.trajectories == 0)
         return zeros / (self.trajectories.shape[0] * self.trajectories.shape[1])
 
     def __len__(self):
-        return self.count
+        # Each case contributes min_time timesteps, and the arrays above are
+        # flattened to one sample per timestep. Returning self.count here would
+        # hide every timestep after the first few from the sampler.
+        return self.states.shape[0]
 
     def __getitem__(self, index):
         """
