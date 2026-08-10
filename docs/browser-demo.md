@@ -1,299 +1,135 @@
-# Browser demo — proposal
+# Browser demo — proposal, and what the build changed
 
 An interactive demo on victor-retamal.com that runs the trained policy entirely
 client-side, so a reader can watch a fleet coordinate, break it, and fix it.
 
-**Recommendation:** hand-written WGSL compute, with a TypeScript path written
-first as both the fallback and the correctness reference. Three phases,
-shippable after the first.
-
-> **Building it?** The executable spec lives in the site repository, at
-> `retamalvictor.github.io/docs/mapf-demo-spec.md`. It is self-contained — model
-> shapes, the exact environment semantics, site conventions, phases and tests —
-> so an agent working there needs no context from this repo. This document is the
-> reasoning behind that spec; that one is the instruction set.
+**Built.** The implementation and its reference documentation live in the site
+repository, at `retamalvictor.github.io/docs/mapf-demo-spec.md`. That one is
+current and self-contained. This document is the reasoning that led to it, kept
+because two of its predictions were wrong in ways worth recording.
 
 ---
 
-## 1. Why this is smaller than it sounds
+## 1. Why this was smaller than it sounded
 
-The site already carries most of the infrastructure.
+The site already carried most of the infrastructure.
 
 | Already present | Consequence |
 |---|---|
 | Vite + TypeScript, no framework | A demo is a class taking `containerId`. No build work |
-| `BlogPost.ts` → `initializeEmbeddedDemos()` | Mount by putting `<div id="mapf-demo">` in the markdown and lazy-importing. Seven demos already follow this |
-| `@webgpu/types` in devDependencies | WebGPU is already a target here |
-| `@bittorch/js` — your own WebGPU inference library | Precedent for hand-written GPU kernels, not just calling a runtime |
-| `public/assets/models/{depth,pelvis,transformer_new}` | Established location and convention for weights |
-| three.js and several canvas demos | Rendering is solved ground |
+| `BlogPost.ts` → `initializeEmbeddedDemos()` | Mount by putting `<div id="mapf-demo">` in the markdown and lazy-importing. Seven demos already followed this |
+| `@webgpu/types` in devDependencies | WebGPU was already a target there |
+| `@bittorch/js` — a hand-written WebGPU inference library | Precedent for writing kernels rather than calling a runtime |
+| `public/assets/models/` | Established location and convention for weights |
+| Canvas demos with a theme bridge | Rendering was solved ground |
 
-The work is the environment, the forward pass, and the interaction — not the
-plumbing.
+The work was the environment, the forward pass, and the interaction — not the
+plumbing. That held.
 
-## 2. Sizing
+## 2. Shipping a runtime would have been the wrong trade
 
-Measured on `gnn_msg_k3_a10b20_oe`:
+The policy is a handful of tensors: three 3×3 convolutions on a 5×5 patch, a
+400→64 encoder, a 192→128 graph filter, and a 128→5 head. Two models together
+are 340 KB.
 
-```
-parameters            64,117          250 KB fp32 · 125 KB fp16
-per robot per step    ~181k MACs
-```
-
-At 30 fps:
-
-| robots | throughput |
-|---|---|
-| 40 | 0.22 GFLOP/s |
-| 100 | 0.54 GFLOP/s |
-| 500 | 2.7 GFLOP/s |
-| 1000 | 5.4 GFLOP/s |
-
-**The model is five weight tensors.** Three 3×3 convolutions (2→16→16→16 on a
-5×5 patch), a 400→64 encoder, a 64×3→128 graph filter with a 64→128 self term,
-and a 128→5 policy head. Shipping a 2–10 MB runtime to execute 250 KB of weights
-is a poor trade, especially since the environment has to be hand-written either
-way.
-
-**Plain JS covers 10–40 robots; the GPU is what reaches the hundreds** where the
-project's claim actually shows.
+Shipping a 2–10 MB inference runtime to execute that is a poor trade, especially
+since the environment has to be hand-written either way — no runtime knows what
+a nearest-four communication graph is. So: hand-written TypeScript, with the
+option of WGSL later.
 
 One assumption worth checking rather than trusting: the environment's adjacency
-is O(N²), which sounds like it would dominate. It doesn't — policy cost is
-181,000·N against N², so the network dominates until N ≈ 181,000. The
-environment is rounding error.
+is O(N²), which sounds like it would dominate. It doesn't. Policy cost is
+~181,000·N against N², so the network dominates until N ≈ 181,000. Confirmed in
+the measurements below — cost is near-linear in N through 200 robots.
 
-## 3. What the demo does
+## 3. Where the proposal was wrong
 
-The thing worth conveying is not "a network runs in your browser". It is that a
-policy trained on ten robots coordinates hundreds, and that two specific
-mechanisms make that work.
+### Plain JavaScript is much faster than predicted
 
-### Primary controls
+The estimate was that the TypeScript path would cover 10–40 robots and that
+WebGPU was what would reach the hundreds "where the project's claim actually
+shows".
 
-**Communication on / off, same instance, side by side.** Two panels, identical
-starts and goals, one policy using the graph and one ignoring it. The core claim,
-visible directly.
+Measured, both panels, one policy step each:
 
-**Fleet size, 10 → 500.** At twenty robots the panels look the same. Past a
-hundred the no-communication side collapses. The reader *finds* the result
-instead of reading it in a table.
+| robots | board | ms/step | steps/s |
+|---|---|---|---|
+| 10 | 20 | 3.0 | 329 |
+| 40 | 40 | 11.7 | 86 |
+| 100 | 63 | 29.3 | 34 |
+| 200 | 89 | 75.4 | 13 |
+| 500 | 141 | 181.3 | 5.5 |
 
-**Temperature, 0 → 5.** The most valuable interaction in the demo. At zero the
-fleet freezes into a deadlock that never resolves however long it runs; raise it
-and the same jam dissolves. Overshoot to five and the fleet wanders uselessly —
-which teaches the rest of the finding, that the noise breaks symmetry rather than
-solving anything.
+100 robots — the fleet size where communication becomes decisive, and therefore
+the whole point — runs at 34 steps/s. The demo simulates at 12. WebGPU would
+only buy 350 and up, which is past where the demo has anything left to say.
 
-### Secondary, if cheap
+Phase 2 was cancelled rather than deferred, and the three-phase estimate
+collapsed to the first phase.
 
-- **Deadlock preset** — loads a known-jamming instance so the frozen state is
-  reachable in one click rather than by luck.
-- **Live stats** — robots home, step count, mean neighbours, fps.
-- **Click to place obstacles.**
-- **Under the hood panel** — the ternary demo already does this well; reuse the
-  pattern to show the architecture and the parameter count.
+The lesson is the ordinary one: the proposal reasoned about throughput in
+GFLOP/s and concluded the GPU was necessary, when the actual question was how
+many steps per second a *watchable* demo needs, which is about 12.
 
-### Explicitly out of scope
+### float16 was a false economy
 
-Training in the browser, editing the architecture, and anything requiring more
-than the shipped checkpoint.
+The plan was to ship fp16 to halve the weights. Two reasons not to: folding
+BatchNorm into a convolution scales its weights by `1/sqrt(running_var + eps)`,
+which can be large and is not known until export; and the parity test wants
+headroom well under its 1e-3 tolerance. float32 costs 170 KB extra, which is
+nothing, and removes a class of debugging.
 
-## 4. Architecture
+## 4. What the build found
 
-### Module layout
+Reimplementing the forward pass is a test in itself, and it surfaced a defect
+that every training run and benchmark to date had missed: the message-passing
+variant's self-term was not local, and not permutation-equivariant. It is in
+`findings.md` §5. The short version is that reimplementation forced the question
+"does this obey the property the architecture claims?", which no loss curve or
+success rate can answer — a policy given extra information gets *better* at both.
 
-```
-src/components/mapf/
-  index.ts            # export { MapfDemo }
-  MapfDemo.ts         # lifecycle, DOM, controls, RAF loop
-  types.ts            # Config, WorldState, Weights
-  weights.ts          # fetch + parse weights.bin, fp16 → f32
-  env.ts              # TS reference environment
-  policy.ts           # TS reference forward pass
-  render2d.ts         # Canvas2D renderer (fallback path)
-  gpu/
-    device.ts         # adapter/device init, feature detection
-    buffers.ts        # allocation and layout
-    pipeline.ts       # shader modules, bind groups, dispatch order
-    render.ts         # instanced WebGPU renderer
-    shaders/
-      fov.wgsl        # board + positions + goals -> N x 2 x 5 x 5
-      adjacency.wgsl  # pairwise distance, range threshold, nearest-4
-      encoder.wgsl    # conv stack + 400->64
-      gnn.wgsl        # normalise, K-hop aggregate, W and W2
-      action.wgsl     # 128->5, temperature sample
-      step.wgsl       # apply actions, obstacles, bounds, collisions
-```
+That is why the demo ships the GCN for both panels, and why
+`scripts/export_web_model.py` refuses the message architecture.
 
-Mounted exactly like the existing demos:
+Two smaller things the port had to get right, neither of them in the original
+plan:
 
-```ts
-// BlogPost.ts → initializeEmbeddedDemos()
-const mapf = document.getElementById('mapf-demo');
-if (mapf) {
-  import('../components/mapf').then(({ MapfDemo }) => {
-    new MapfDemo({
-      containerId: 'mapf-demo',
-      modelPath: '/assets/models/mapf',
-      defaultAgents: 40,
-      defaultTemperature: 3.0,
-    });
-  });
-}
-```
-
-### Per-frame pipeline
-
-Both backends run the same six stages; only the implementation differs.
-
-```
-positions, goals, board
-        │
-        ├─ adjacency   distance, threshold at sensing range, keep nearest 4
-        ├─ fov         5×5×2 patch per robot, goal projected onto the edge
-        │
-        ├─ encoder     conv ×3 → flatten 400 → 64                     per robot
-        ├─ gnn         D^-½(A+I)D^-½, K hops, W_k and W_self → 128     over graph
-        ├─ action      128 → 5 logits → sample at temperature T        per robot
-        │
-        └─ step        apply, revert into obstacles, clamp, revert collisions
-```
-
-State stays in GPU buffers across frames; only the render pass reads it. The
-same shape as the batched environment in this repository — the demo is that
-architecture, ported.
-
-### Buffer layout (WebGPU path)
-
-| Buffer | Type | Size at N=500 |
-|---|---|---|
-| `positions`, `prev` | `i32 × N × 2` | 8 KB |
-| `goals` | `i32 × N × 2` | 4 KB |
-| `board` | `u32 × H × W` | 16 KB @ 64² |
-| `adjacency` | `f32 × N × N` | 1 MB |
-| `fov` | `f32 × N × 50` | 100 KB |
-| `features` | `f32 × N × 64`, `× 128` | 384 KB |
-| `logits`, `actions` | `f32 × N × 5`, `u32 × N` | 12 KB |
-| `weights` | `f32 × 64,117` | 250 KB |
-| `rngState` | `u32 × N` | 2 KB |
-
-Under 2 MB total. No pressure anywhere.
-
-### Two details that need care
-
-**Collision resolution** reverts *every* robot sharing a cell, which is a
-scatter with contention. Two-pass: atomically increment an occupancy grid keyed
-by cell, then each robot reads its own cell's count and reverts if it exceeds
-one. Matches `env_vectorized.py` exactly, including that reverting is not
-re-checked for new collisions.
-
-**Sampling** needs per-robot reproducible randomness. A small PCG or xorshift
-per robot, seeded once, advanced each step — so a given seed replays identically
-and the deadlock preset is stable.
-
-### Fallback
-
-Feature-detect `navigator.gpu`. Without it, run the TypeScript path with a lower
-default fleet and a single line explaining the cap. The TS path is written first
-regardless, so this costs nothing extra.
+- The adjacency is **not symmetric** — nearest-four is a per-row rule — and the
+  Python multiplies `(F, N) @ (N, N)`, so aggregation is over the **transpose**.
+- The fixture instance has to be **crowded**. The first one used 8 robots on
+  20×20, where both policies choose identical actions; it would have passed for
+  an implementation that ignored the communication graph entirely.
 
 ## 5. The export interface
 
-One script in this repository writes three files into
-`public/assets/models/mapf/`. That is the entire coupling between the repos.
+One script, `scripts/export_web_model.py`, writes four files into the site's
+asset directory. That is the entire coupling between the repositories.
 
-**`weights.bin`** — the five tensors, fp16, little-endian, in this fixed order:
+- **`comm.bin`, `nocomm.bin`** — float32, little-endian, BatchNorm folded,
+  matrices pre-transposed so the browser does a plain `x @ W`
+- **`config.json`** — per-tensor offsets and shapes, plus the environment
+  constants and the defaults that must match the article
+- **`fixture.json`** — a deterministic rollout: field of view, adjacency,
+  logits, actions and positions at every step, so a parity failure localises to
+  a stage instead of just saying the demo is wrong
 
-| # | Tensor | Shape |
-|---|---|---|
-| 1 | `convLayers.0.weight` + bias | (16,2,3,3), (16) |
-| 2 | `convLayers.3.weight` + bias | (16,16,3,3), (16) |
-| 3 | `convLayers.6.weight` + bias | (16,16,3,3), (16) |
-| 4 | `compressMLP.0.weight` + bias | (64,400), (64) |
-| 5 | `GFL.0.W`, `GFL.0.W2` | (64,3,128), (64,128) |
-| 6 | `actionMLP.0.weight` + bias | (5,128), (5) |
+## 6. What the demo does
 
-BatchNorm folds into the preceding convolution at export — the demo runs in eval
-mode only, so there is no reason to carry four extra tensors and a normalisation
-step.
+Two panels, one instance — identical obstacles, starts, goals *and* per-robot
+random streams — differing only in whether the policy may use the graph.
 
-**`config.json`** — channels, K, `sensing_range`, FOV size, pad, action encoding,
-board defaults, recommended temperature.
+**Fleet size, 10 → 200.** At twenty robots the panels are indistinguishable.
+Past a hundred the no-communication side collapses. The reader finds the result
+instead of reading it in a table.
 
-**`fixture.json`** — one `(observation, adjacency) → logits` triple plus a small
-rollout: five steps of positions and actions from a fixed seed. This is the
-parity test, and it is not optional.
+**Temperature, 0 → 5.** The most valuable interaction. At zero the fleet freezes
+into a deadlock that never resolves however long it runs; raise it and the same
+jam dissolves. Overshoot to five and the fleet wanders uselessly — which teaches
+the rest of the finding, that the noise breaks symmetry rather than solving
+anything.
 
-## 6. Plan
+Colour encodes robot *state*, not identity: two hundred arbitrary hues would be
+decoration, whereas moving / arrived / stuck is what makes a deadlock legible.
 
-### Phase 1 — TypeScript reference (≈1 day)
-
-Delivers a working demo, and the oracle everything else is checked against.
-
-1. Export script and the three asset files
-2. `weights.ts` — fetch, parse, fp16 → f32
-3. `env.ts` — port `VectorizedGraphEnv`, reusing its test vectors
-4. `policy.ts` — forward pass with plain loops
-5. Parity test against `fixture.json`
-6. `render2d.ts` — board, robots coloured by state, communication edges
-7. `MapfDemo.ts` — the three controls, RAF loop, stats line
-
-**Done when:** 40 robots at 30 fps; logits match the fixture within 1e-3; the
-temperature slider visibly freezes and unfreezes the fleet.
-
-### Phase 2 — WebGPU (≈2 days)
-
-1. `gpu/device.ts`, `buffers.ts` — init and allocation
-2. `adjacency.wgsl`, `fov.wgsl` — environment observation
-3. `encoder.wgsl`, `gnn.wgsl`, `action.wgsl` — the forward pass
-4. `step.wgsl` — dynamics with the two-pass collision resolution
-5. Parity test again, this time GPU against the TS path on identical seeds
-6. `gpu/render.ts` — instanced quads for robots and obstacles, lines for edges
-
-**Done when:** 500 robots at 60 fps; GPU and TS paths agree step-for-step at
-temperature 0 on the same seed.
-
-### Phase 3 — polish (≈half a day)
-
-Deadlock preset, under-the-hood panel, `prefers-reduced-motion`, mobile sizing,
-a smaller default fleet on first paint.
-
-**Ship after Phase 1 if time is short.** A 40-robot demo with a temperature
-slider already carries the best finding in the project.
-
-## 7. Testing
-
-| Test | Guards |
-|---|---|
-| Logits match `fixture.json` within 1e-3 | The forward pass |
-| Five-step rollout matches the fixture at T=0 | The environment dynamics |
-| GPU path matches TS path, same seed, 100 steps | WGSL drift |
-| Adjacency matches a brute-force TS implementation | The nearest-4 rule |
-| Demo defaults equal the article's (T=3, horizon 3× board) | The demo disagreeing with the post |
-
-The last one matters more than it looks. If the demo says something different
-from the article, a reader will believe the demo — so the demo is the thing that
-has to be right.
-
-## 8. Risks
-
-| Risk | Response |
-|---|---|
-| **WGSL/PyTorch numerical drift** | The fixture test, run in CI. Non-negotiable |
-| **Environment diverging from the repo's** | Port from `env_vectorized.py`, which is already pinned to `GraphEnv` by an equivalence test; reuse those vectors |
-| WebGPU unavailable | Feature-detect, fall back to the TS path |
-| Demo contradicts the post | Ship the same checkpoint and the same defaults |
-| Bundle bloat | Lazy import as the existing demos do; weights fetched on demand |
-| Scope creep into a research toy | Training, architecture editing and custom maps are out of scope, written down here so it stays that way |
-
-## 9. Estimate
-
-| Phase | Effort | Outcome |
-|---|---|---|
-| 1 | ~1 day | Shippable 40-robot demo, and the reference implementation |
-| 2 | ~2 days | 500 robots at 60 fps |
-| 3 | ~½ day | Presets, panel, mobile |
-
-About three and a half days for all of it, with a working demo at the end of the
-first.
+Out of scope, deliberately: training in the browser, editing the architecture,
+custom maps.
