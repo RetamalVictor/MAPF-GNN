@@ -7,6 +7,12 @@ client-side, so a reader can watch a fleet coordinate, break it, and fix it.
 first as both the fallback and the correctness reference. Three phases,
 shippable after the first.
 
+> **Building it?** The executable spec lives in the site repository, at
+> `retamalvictor.github.io/docs/mapf-demo-spec.md`. It is self-contained — model
+> shapes, the exact environment semantics, site conventions, phases and tests —
+> so an agent working there needs no context from this repo. This document is the
+> reasoning behind that spec; that one is the instruction set.
+
 ---
 
 ## 1. Why this is smaller than it sounds
