@@ -6,7 +6,6 @@ import torch.nn.functional as F
 from scipy.linalg import sqrtm
 from scipy.special import softmax
 import math
-from copy import copy
 
 
 class GCNLayer(nn.Module):
@@ -183,10 +182,17 @@ class MessagePassingLayer(nn.Module):
             self.adj_matrix * deg_invroot.unsqueeze(2) * deg_invroot.unsqueeze(1)
         )
 
-        node_feats_not_shared = copy(node_feats)
-        node_feats_not_shared = node_feats.reshape(
-            [batch_size, self.n_nodes, self.in_features]
-        )
+        # The self-term needs each node's own features, which means transposing
+        # (B, F, N) into (B, N, F). This was a reshape, which reinterprets the
+        # buffer rather than transposing it: every node's "own" features were a
+        # fixed stride through the whole fleet's. That made the layer depend on
+        # the arbitrary order of the agents, and worse, gave it a global channel
+        # - information reached a node from nodes it had no edge to.
+        #
+        # Checkpoints trained before this fix encode the defect and have to be
+        # retrained. tests/test_equivariance.py is the guard; docs/findings.md
+        # has the measurements.
+        node_feats_not_shared = node_feats.permute(0, 2, 1)
         # K-hops
         node_feats = node_feats.reshape([batch_size, self.in_features, self.n_nodes])
         z = node_feats.reshape([batch_size, 1, self.in_features, self.n_nodes])

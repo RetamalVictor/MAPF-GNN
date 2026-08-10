@@ -151,9 +151,88 @@ This is a sharper claim than the earlier one. Under argmax, communication looked
 uniformly helpful — but that was measuring which architecture entered fewer
 fixed points, not which coordinates better.
 
+**One column of that table is not what it appears to be.** See §5.
+
 ---
 
-## 5. Scaling comes from the architecture, not the demonstrations
+## 5. The message-passing variant was not decentralised
+
+**Observed.** Building the browser demo meant reimplementing the forward pass,
+which meant checking a property nothing in training had ever tested: a fleet is
+an unordered set, so relabelling the robots must relabel the outputs and change
+nothing else.
+
+It does not. Permuting the agents and the adjacency identically, then undoing
+the permutation on the output:
+
+| N | GNN message | GCN K=3 |
+|---|---|---|
+| 6 | 2.48 | 0.000004 |
+| 10 | 3.44 | 0.000004 |
+| 40 | 5.45 | 0.000002 |
+| 100 | 6.31 | 0.000002 |
+
+Logits are on a scale of about 10, so the message model's error is 25–60% — not
+a numerical artifact. The GCN's is float noise.
+
+**What it actually was.** One line in `MessagePassingLayer.forward`:
+
+```python
+node_feats_not_shared = node_feats.reshape([batch_size, self.n_nodes, self.in_features])
+```
+
+`node_feats` arrives as `(B, F, N)`. Turning that into `(B, N, F)` needs a
+transpose; `reshape` reinterprets the buffer instead. The two agree only in
+trivial cases. Replacing it with `.permute(0, 2, 1)` drives the equivariance
+error to **exactly 0.0** at every fleet size.
+
+**Why it matters more than a wrong number.** The self-term is meant to be the
+robot's *own* features. What it actually reads is a fixed stride through the
+whole fleet's features — so it is a global channel. Perturbing the observation
+of a robot that is not connected to anything, on an **empty** adjacency matrix:
+
+| | N=6 | N=10 | N=40 |
+|---|---|---|---|
+| GNN message: change in agent 0's logits | 0.82 | 0.94 | 0.16 |
+| GCN K=3 | **0.000000** | **0.000000** | **0.000000** |
+
+Information reaches a robot from robots it cannot communicate with. That is not
+a decentralised policy, and the whole premise — local observations, a bounded
+communication radius, shared weights — does not hold for it.
+
+**Consequences.**
+
+- The "GNN message" column in §4 measures something else and should not be read
+  as a decentralised result. Its 0.695 at 100 robots is plausibly *helped* by
+  the leak, since global information is exactly what a crowded board rewards.
+  The **GCN K=3 column stands**, and it still carries the claim: 0.60 against
+  0.21 for no communication.
+- §2's online-expert numbers were all measured on this checkpoint. The
+  before/after comparison is internally consistent — same architecture on both
+  sides — so the method's effect is real, but the magnitudes should be
+  re-measured on the GCN before being quoted as the method's.
+- The browser demo ships the **GCN** for both panels. A demo about
+  decentralised control cannot run a policy that secretly reads every robot.
+
+**Solution.** `.reshape` → `.permute(0, 2, 1)`, plus
+`tests/test_equivariance.py`, which checks three things the rest of the suite
+cannot: that permuting the fleet permutes the output, that the graph layers
+alone do so, and that an unconnected robot cannot change another's logits. The
+last one fails loudly on the old code.
+
+The weights are the part that cannot be fixed in a line — they were trained
+against the defect and need a retrain to mean anything.
+`scripts/export_web_model.py` refuses the message architecture with a pointer
+here in the meantime.
+
+**Worth noting how it survived.** Every test was a loss curve or a success rate,
+and both were healthy — a leak that hands the policy extra information would
+*improve* them. What caught it was asking whether the code obeyed a property the
+architecture claims, which no aggregate metric can answer.
+
+---
+
+## 6. Scaling comes from the architecture, not the demonstrations
 
 Doubling the expert's fleet size (5 → 10 robots) and separately quadrupling
 training density changed results by under three points everywhere, and the
@@ -166,7 +245,7 @@ replaces. It doesn't: shared weights and local observations are what generalise.
 
 ---
 
-## 6. Engineering that changed what was askable
+## 7. Engineering that changed what was askable
 
 None of this is the method, but all of it decided how many questions could be
 asked.
@@ -190,6 +269,12 @@ seconds, and training dominates.
 
 ## Open
 
+- **Retrain the message variant.** The self-term fix (§5) is one line, but the
+  weights it was trained with encode the defect. Until it is retrained there is
+  no honest message-passing number, and no way to tell how much of its apparent
+  advantage over the GCN was the leak.
+- **Re-measure the online expert on the GCN.** §2's magnitudes were collected on
+  the defective checkpoint.
 - **Fleet-size bucketing.** Collection is pinned to the training fleet size
   because a sample's tensors are shaped `(agents, …)`. Bucketing batches by agent
   count would let the online expert collect where the policy actually jams.
