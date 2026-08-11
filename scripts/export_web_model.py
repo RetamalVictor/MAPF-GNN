@@ -155,7 +155,8 @@ def sample_instance(rng, board, num_agents, num_obstacles):
     return obstacles, starts, goals
 
 
-def make_fixture(networks, board, num_agents, num_obstacles, steps, sensing_range, seed):
+def make_fixture(networks, board, num_agents, num_obstacles, steps, sensing_range,
+                 max_neighbours, seed):
     """Roll the policies out deterministically and record every intermediate.
 
     The browser reproduces this from the same starts, goals and obstacles. Field
@@ -165,11 +166,15 @@ def make_fixture(networks, board, num_agents, num_obstacles, steps, sensing_rang
     rng = np.random.default_rng(seed)
     obstacles, starts, goals = sample_instance(rng, board, num_agents, num_obstacles)
 
+    # max_neighbours must be carried explicitly: VectorizedGraphEnv defaults it
+    # to 4, so leaving it out silently generates a capped fixture for a manifest
+    # that declares an uncapped graph. The parity test catches it, loudly.
     config = {
         "board_size": [board, board],
         "num_agents": num_agents,
         "max_time": steps + 1,
         "sensing_range": sensing_range,
+        "max_neighbours": max_neighbours or None,
     }
 
     fixture = {
@@ -229,11 +234,15 @@ def main():
         default=Path("../retamalvictor.github.io/public/assets/models/mapf"),
         help="asset directory in the site repository",
     )
-    parser.add_argument("--comm-config", default="configs/config_gnn_k3_a10b20.yaml")
-    parser.add_argument("--comm-checkpoint", default="results/gnn_k3_a10b20/best_model.pt")
-    parser.add_argument("--nocomm-config", default="configs/config_baseline_a10b20.yaml")
+    # The demo shows the communicating policy only. The baseline is still
+    # exported because the parity fixture uses the disagreement between the two
+    # to prove it is crowded enough to detect a missing communication path - a
+    # check worth far more than the 121 KB it costs.
+    parser.add_argument("--comm-config", default="configs/config_gnn_k3_dense_r8.yaml")
+    parser.add_argument("--comm-checkpoint", default="results/gnn_k3_dense_r8/best_model.pt")
+    parser.add_argument("--nocomm-config", default="configs/config_baseline_dense.yaml")
     parser.add_argument(
-        "--nocomm-checkpoint", default="results/baseline_a10b20/best_model.pt"
+        "--nocomm-checkpoint", default="results/baseline_dense/best_model.pt"
     )
     # A deliberately crowded instance. On a sparse board the two policies choose
     # identical actions, so the fixture would pass for an implementation that
@@ -346,6 +355,7 @@ def main():
         num_obstacles=args.fixture_obstacles,
         steps=args.fixture_steps,
         sensing_range=sensing_range,
+        max_neighbours=max_neighbours,
         seed=args.seed,
     )
     (args.out / "fixture.json").write_text(json.dumps(fixture))
