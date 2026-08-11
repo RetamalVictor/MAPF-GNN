@@ -51,6 +51,12 @@ class GraphEnv(gym.Env):
         self.positionY = np.zeros((nb_agents, 1), dtype=np.int32)
         self.nb_agents = nb_agents
         self.sensing_range = sensing_range
+        # How many neighbours a robot may aggregate over. Keeping only the four
+        # nearest caps the message bandwidth, but it also means a wider sensing
+        # range adds no neighbours - it only swaps close ones for distant ones.
+        # None or 0 aggregates over everything in range, which is what the
+        # normalisation D^-1/2 (A + I) D^-1/2 exists to handle.
+        self.max_neighbours = self.config.get("max_neighbours", 4)
         self.obs_shape = self.nb_agents * 4
         self.action_space = spaces.Discrete(5)
         self.observation_space = spaces.Box(
@@ -133,7 +139,6 @@ class GraphEnv(gym.Env):
         D_ij[D_ij >= self.sensing_range] = 0
 
         self.distance_matrix = D_ij
-        # Get only closest 4 neighbors
         self.adj_matrix = self._computeClosest(D_ij)
         self.adj_matrix[self.adj_matrix != 0] = 1
 
@@ -173,13 +178,26 @@ class GraphEnv(gym.Env):
         else:
             return self.nb_agents * self.max_time
 
-    @staticmethod
-    def _computeClosest(A):
+    def _computeClosest(self, A):
+        """Keep only each robot's nearest `max_neighbours` links.
+
+        With no cap every robot in sensing range is a neighbour, which is what
+        aggregation is supposed to mean; the degree normalisation downstream
+        handles the varying number.
+
+        With a cap, padding the sorted distances with zeros at the front
+        reproduces the original behaviour when a robot has fewer neighbours than
+        the cap: nothing is dropped.
+        """
+        cap = self.max_neighbours
+        if not cap:
+            return A
+
         for i in range(len(A)):
             temp = np.sort(A[i][A[i] != 0])
-            if len(temp) < 4:
-                temp = np.concatenate((np.zeros(4 - len(temp)), temp))
-            A[i][A[i] > temp[3]] = 0
+            if len(temp) < cap:
+                temp = np.concatenate((np.zeros(cap - len(temp)), temp))
+            A[i][A[i] > temp[cap - 1]] = 0
         return A
 
     def step(self, actions, emb):

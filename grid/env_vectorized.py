@@ -41,6 +41,8 @@ class VectorizedGraphEnv:
         self.config = config
         self.board_size = config["board_size"][0]
         self.sensing_range = config.get("sensing_range", 6)
+        # None or 0 means aggregate over everything in range; see _compute_graph.
+        self.max_neighbours = config.get("max_neighbours", 4)
         self.max_time = config["max_time"]
         self.pad = pad
 
@@ -168,17 +170,22 @@ class VectorizedGraphEnv:
         return self.get_observations(), self.all_at_goal()
 
     def _compute_graph(self):
-        """Nearest-4 communication graph within the sensing range."""
+        """The nearest `max_neighbours` robots within the sensing range."""
         pos = torch.stack([self.posX, self.posY], dim=2).float()  # (E, N, 2)
         dist = torch.cdist(pos, pos)
         dist = torch.where(dist >= self.sensing_range, torch.zeros_like(dist), dist)
 
-        # Keep the four smallest non-zero distances per agent. Padding the sort
-        # with +inf reproduces GraphEnv's behaviour when an agent has fewer than
-        # four neighbours: nothing is dropped.
-        masked = torch.where(dist > 0, dist, torch.full_like(dist, float("inf")))
-        threshold = masked.sort(dim=2).values[:, :, 3:4]
-        dist = torch.where(dist > threshold, torch.zeros_like(dist), dist)
+        # Uncapped, every robot in range is a neighbour - which is what
+        # aggregation is meant to be. The degree normalisation in the graph
+        # filter is what makes a varying number of them safe to sum over.
+        if self.max_neighbours:
+            # Keep the k smallest non-zero distances per agent. Padding the sort
+            # with +inf reproduces GraphEnv's behaviour when an agent has fewer
+            # neighbours than the cap: nothing is dropped.
+            masked = torch.where(dist > 0, dist, torch.full_like(dist, float("inf")))
+            k = min(self.max_neighbours, masked.shape[2])
+            threshold = masked.sort(dim=2).values[:, :, k - 1 : k]
+            dist = torch.where(dist > threshold, torch.zeros_like(dist), dist)
 
         self.distance_matrix = dist
         self.adj_matrix = (dist != 0).float()

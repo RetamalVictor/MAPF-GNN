@@ -50,15 +50,16 @@ def rollout_reference(config, goals, obstacles, starts, actions):
     return fovs, adjs, positions
 
 
-def build_episode(seed):
+def build_episode(seed, config=None):
+    config = config or CONFIG
     rng = np.random.RandomState(seed)
-    board = CONFIG["board_size"]
-    obstacles = create_obstacles(board, CONFIG["obstacles"])
-    goals = create_goals(board, CONFIG["num_agents"], obstacles)
+    board = config["board_size"]
+    obstacles = create_obstacles(board, config["obstacles"])
+    goals = create_goals(board, config["num_agents"], obstacles)
 
     occupied = {tuple(o) for o in obstacles} | {tuple(g) for g in goals}
     starts = []
-    while len(starts) < CONFIG["num_agents"]:
+    while len(starts) < config["num_agents"]:
         cell = (rng.randint(board[0]), rng.randint(board[1]))
         if cell not in occupied:
             occupied.add(cell)
@@ -66,20 +67,30 @@ def build_episode(seed):
     return obstacles, goals, np.array(starts, dtype=np.int32)
 
 
+# Crowded enough that robots routinely have more than four neighbours in range.
+# On the sparse default config a cap removes nothing, so a test that used it
+# would pass whatever the cap did.
+DENSE_CONFIG = dict(
+    CONFIG, num_agents=14, board_size=[10, 10], obstacles=3, sensing_range=6
+)
+
+
 @pytest.mark.parametrize("seed", [0, 1, 2, 3])
-def test_matches_reference_environment(seed):
-    obstacles, goals, starts = build_episode(seed)
+@pytest.mark.parametrize("cap", [4, None, 8])
+def test_matches_reference_environment(seed, cap):
+    config = dict(DENSE_CONFIG, max_neighbours=cap)
+    obstacles, goals, starts = build_episode(seed, config)
     rng = np.random.RandomState(1000 + seed)
     actions = [
-        rng.randint(0, 5, size=CONFIG["num_agents"]) for _ in range(24)
+        rng.randint(0, 5, size=config["num_agents"]) for _ in range(24)
     ]
 
     fovs, adjs, positions = rollout_reference(
-        CONFIG, goals, obstacles, starts, actions
+        config, goals, obstacles, starts, actions
     )
 
     env = VectorizedGraphEnv(
-        CONFIG,
+        config,
         goals=goals[None],
         obstacles=obstacles[None],
         starting_positions=starts[None],
@@ -156,3 +167,36 @@ def test_goal_metrics():
     )
     assert bool(env.all_at_goal()[0]), "agents placed on their goals should count"
     assert float(env.success_rate()[0]) == pytest.approx(1.0)
+
+
+def test_uncapped_graph_is_denser_than_capped():
+    """The cap must actually remove edges, or the tests above prove nothing.
+
+    Removing the cap is the point of the change: aggregating over every robot in
+    range is what a graph network is for, and the degree normalisation exists to
+    make a varying number of neighbours safe. This pins the direction — more
+    links uncapped, and never fewer than the cap allowed.
+    """
+    obstacles, goals, starts = build_episode(0, DENSE_CONFIG)
+
+    degrees = {}
+    for cap in (4, 8, None):
+        env = VectorizedGraphEnv(
+            dict(DENSE_CONFIG, max_neighbours=cap),
+            goals=goals[None],
+            obstacles=obstacles[None],
+            starting_positions=starts[None],
+            device=DEVICE,
+        )
+        degrees[cap] = float(env.adj_matrix.sum(dim=2).mean())
+
+    # Not <= 4: the threshold comparison keeps every neighbour at exactly the
+    # cut-off distance, and on a grid distances tie constantly, so nearest-4
+    # averages slightly above four. That is the original behaviour and both
+    # environments reproduce it - the equivalence tests above cover it.
+    assert degrees[8] >= degrees[4], "raising the cap removed links"
+    assert degrees[None] >= degrees[8], "removing the cap removed links"
+    assert degrees[None] > degrees[4] + 0.5, (
+        "uncapped is barely denser than nearest-4, so this scene is too sparse "
+        f"to be testing anything: {degrees}"
+    )

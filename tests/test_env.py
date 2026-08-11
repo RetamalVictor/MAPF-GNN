@@ -4,7 +4,9 @@ Tests both functionality correctness and performance benchmarks.
 """
 
 import numpy as np
-import time
+import time  # perf_counter, not time(): the latter is too coarse on Windows
+             # to measure a microsecond operation, and a baseline that quantises
+             # to zero turns these scaling ratios into a division by zero.
 from grid.env_graph_gridv1 import GraphEnv, create_goals, create_obstacles
 
 
@@ -308,11 +310,11 @@ class TestEnvironmentPerformance:
         num_obstacles = 100
 
         # Time goal generation (should be < 10ms for 50x50 board)
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(100):
             obstacles = create_obstacles(board_size, num_obstacles)
             goals = create_goals(board_size, num_agents, obstacles)
-        elapsed = (time.time() - start) / 100
+        elapsed = (time.perf_counter() - start) / 100
         assert elapsed < 0.01, f"Goal generation too slow: {elapsed*1000:.2f}ms"
 
     def test_step_performance(self):
@@ -338,12 +340,12 @@ class TestEnvironmentPerformance:
             env.step(actions, emb)
 
         # Time steps (should be < 5ms per step for 20 agents)
-        start = time.time()
+        start = time.perf_counter()
         num_steps = 100
         for _ in range(num_steps):
             actions = np.random.randint(0, 5, size=20)
             env.step(actions, emb)
-        elapsed = (time.time() - start) / num_steps
+        elapsed = (time.perf_counter() - start) / num_steps
 
         assert elapsed < 0.005, f"Step too slow: {elapsed*1000:.2f}ms per step"
 
@@ -370,10 +372,10 @@ class TestEnvironmentPerformance:
             env.positionY[i] = 25
 
         # Time collision checking (should be < 1ms even for 100 agents)
-        start = time.time()
+        start = time.perf_counter()
         for _ in range(1000):
             env.check_collisions()
-        elapsed = (time.time() - start) / 1000
+        elapsed = (time.perf_counter() - start) / 1000
 
         assert elapsed < 0.001, f"Collision checking too slow: {elapsed*1000:.2f}ms"
 
@@ -395,10 +397,10 @@ class TestEnvironmentPerformance:
             env.reset()
 
             # Time distance computation
-            start = time.time()
+            start = time.perf_counter()
             for _ in range(100):
                 env._computeDistance()
-            elapsed = (time.time() - start) / 100
+            elapsed = (time.perf_counter() - start) / 100
             times.append(elapsed)
 
         # Check that scaling is reasonable (should be roughly O(n²))
