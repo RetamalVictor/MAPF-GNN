@@ -459,5 +459,62 @@
       0.608
     ],
     "cuda_graph": "Capturing the forward in a CUDA graph gives 5.2x at 100 episodes (0.594 -> 0.114 ms) but only 1.1x at 1000 (0.776 -> 0.685 ms), because by then the GPU is doing real work."
+  },
+  "communication_radius": {
+    "note": "Success rate against the communication radius, 100 robots on 63x63, 200 episodes, T=3, horizon 3x board. The policies were trained at sensing_range 4; wider settings are out of distribution. The non-communicating baseline is the control - it has no graph, so its column must not move.",
+    "agents": 100,
+    "board": 63,
+    "trained_range": 4,
+    "rows": [
+      {
+        "sensing_range": 2,
+        "links": 0.24,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.5399999618530273
+      },
+      {
+        "sensing_range": 3,
+        "links": 0.66,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.5999999642372131
+      },
+      {
+        "sensing_range": 4,
+        "links": 1.18,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.5999999642372131
+      },
+      {
+        "sensing_range": 5,
+        "links": 1.75,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.6200000047683716
+      },
+      {
+        "sensing_range": 6,
+        "links": 2.52,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.6049999594688416
+      },
+      {
+        "sensing_range": 8,
+        "links": 3.44,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.5349999666213989
+      },
+      {
+        "sensing_range": 10,
+        "links": 3.87,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.38999998569488525
+      },
+      {
+        "sensing_range": 14,
+        "links": 4.07,
+        "alpha_no_comms": 0.20999999344348907,
+        "alpha_comms": 0.3400000035762787
+      }
+    ],
+    "conclusion": "Widening the radio does not help, it collapses: alpha is 0.54 at range 2, flat near 0.60 from 3 to 6, then 0.54 at 8, 0.39 at 10 and 0.34 at 14 - worse than at range 2. Only the four nearest neighbours are ever kept, so a wider radius adds no links; it swaps near ones for far ones, and a message from a robot too distant to collide with is worse than no message. Combined with the k-hop reach (2.6 robots at K=3, 3.1 at K=5), neither a wider radio nor a deeper filter is the missing piece."
   }
 }

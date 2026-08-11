@@ -314,8 +314,12 @@ def main():
             # brute-force budget that flatters every policy.
             "temperature": 3.0,
             "horizon_factor": 3,
-            "agents": 40,
-            "board": 40,
+            # 100, not 40. At 40 robots the communicating and non-communicating
+            # policies score 0.93 against 0.94 - a reader watching the default
+            # sees two identical panels and concludes the demo is broken. The
+            # gap only opens at 100: 0.60 against 0.21.
+            "agents": 100,
+            "board": 63,
             "obstacle_fraction": 0.02,
         },
         "models": manifest_models,
