@@ -45,10 +45,10 @@ num_workers: 3
 batch_size: 128
 train:
   root_dir:
-  - dataset/dense_r8/o8
-  - dataset/dense_r8/o20
-  - dataset/dense_r8/o40
-  - dataset/dense_r8/o60
+  - dataset/dense_r8/10_8_20
+  - dataset/dense_r8/10_20_20
+  - dataset/dense_r8/10_40_20
+  - dataset/dense_r8/10_60_20
   mode: train
   min_time: 5
   max_time_dl: 60

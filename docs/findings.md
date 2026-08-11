@@ -232,7 +232,58 @@ architecture claims, which no aggregate metric can answer.
 
 ---
 
-## 6. Scaling comes from the architecture, not the demonstrations
+## 6. Most of "communication matters at scale" was a training-data artifact
+
+**Observed.** §4 reported that at 100 robots a non-communicating policy collapses
+to 0.21 while a communicating one holds 0.60, and read that as communication
+becoming decisive with scale. Two changes to how the policies are *trained*
+mostly erase it.
+
+The first is the neighbour cap. The graph joined each robot to its four nearest
+neighbours within range — a bandwidth limit inherited from the original design.
+But `D^-½(A+I)D^-½` is precisely what makes a varying degree safe to aggregate
+over, so the cap was throwing away the thing the architecture exists to handle.
+At 100 robots with a radius of 8 it discarded more than half the available
+links (8.5 neighbours available, 4.0 kept). It also made a wider radio
+pointless: with the cap on, widening swaps near neighbours for far ones rather
+than adding any, which is why raising the range at inference *hurt* (0.60 at 4,
+0.34 at 14).
+
+The second is obstacle density. Training used eight obstacles on a 20×20 board —
+2%, and nothing else, ever.
+
+**Result.** Retraining with the cap removed, a radius of 8, and four obstacle
+densities (2/5/10/15%), at 100 robots and matched density:
+
+| policy | training data | α @100 |
+|---|---|---|
+| no comms | 1,182 cases, 2% only | 0.210 |
+| no comms | 1,670 cases, 2% only | 0.300 |
+| no comms | 1,937 cases, four densities | **0.790** |
+| **comms**, radius 8, uncapped | 1,937 cases, four densities | **0.935** |
+
+The middle row is the control that matters. More data alone buys +0.09; the
+density variety buys **+0.49**; communication then adds **+0.145** on top.
+
+**So communication does still help, and by a solid margin — but it is worth a
+third of what §4 implied, because §4's baseline was undertrained.** The
+non-communicating policy was not collapsing under scale so much as failing on
+maps it had never been shown.
+
+**And the old models are worse than "worse" off-distribution.** At 10%
+obstacles, both previously shipped policies score exactly **0.000** at 40 and
+100 robots. The retrained pair manages 0.39 and 0.10. Anything that lets a
+reader vary obstacle density — the browser demo does — was showing a cliff that
+belonged to the training set, not to the method.
+
+**Caveat.** The retrained pair changes three things at once (cap, radius,
+density curriculum). The volume control above isolates data quantity from
+density, but not the cap from the radius; those two are entangled by design,
+since a wider radio does nothing while the cap is on.
+
+---
+
+## 7. Scaling comes from the architecture, not the demonstrations
 
 Doubling the expert's fleet size (5 → 10 robots) and separately quadrupling
 training density changed results by under three points everywhere, and the
@@ -245,7 +296,7 @@ replaces. It doesn't: shared weights and local observations are what generalise.
 
 ---
 
-## 7. Engineering that changed what was askable
+## 8. Engineering that changed what was askable
 
 None of this is the method, but all of it decided how many questions could be
 asked.

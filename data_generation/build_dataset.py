@@ -39,7 +39,9 @@ def build(root, agents, board, obstacles, cases, sensing_range, max_neighbours,
     paths = []
 
     for count in obstacles:
-        path = Path(root) / f"o{count}" / "train"
+        # Named {agents}_{obstacles}_{board}, the convention tests/test_models.py
+        # parses to check a config against the data it was trained on.
+        path = Path(root) / f"{agents}_{count}_{board}" / "train"
         print(f"\n=== {count} obstacles on {board}x{board} "
               f"({100 * count / (board * board):.1f}% of the board) ===")
 

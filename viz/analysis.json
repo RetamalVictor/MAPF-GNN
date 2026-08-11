@@ -516,5 +516,35 @@
       }
     ],
     "conclusion": "Widening the radio does not help, it collapses: alpha is 0.54 at range 2, flat near 0.60 from 3 to 6, then 0.54 at 8, 0.39 at 10 and 0.34 at 14 - worse than at range 2. Only the four nearest neighbours are ever kept, so a wider radius adds no links; it swaps near ones for far ones, and a message from a robot too distant to collide with is worse than no message. Combined with the k-hop reach (2.6 robots at K=3, 3.1 at K=5), neither a wider radio nor a deeper filter is the missing piece."
+  },
+  "retrained_uncapped": {
+    "note": "Retrained with the neighbour cap removed, sensing range 8, and four obstacle densities (2/5/10/15%). Matched density, T=3, horizon 3x board, 200 episodes, identical instances across models, each evaluated under its own graph settings.",
+    "alpha_at_100_robots": {
+      "no_comms, 1182 cases, 2% only": 0.21,
+      "no_comms, 1670 cases, 2% only": 0.3,
+      "no_comms, 1937 cases, four densities": 0.79,
+      "comms r8 uncapped, 1937 cases, four densities": 0.935
+    },
+    "attribution": "data volume +0.09, density variety +0.49, communication +0.145",
+    "off_distribution": {
+      "note": "At 10% obstacles the previously shipped models score exactly zero past 40 robots.",
+      "alpha_40": {
+        "old_no_comms": 0.04,
+        "old_comms": 0.03,
+        "new_no_comms": 0.35,
+        "new_comms": 0.39
+      },
+      "alpha_100": {
+        "old_no_comms": 0.0,
+        "old_comms": 0.0,
+        "new_no_comms": 0.03,
+        "new_comms": 0.1
+      }
+    },
+    "mean_neighbours": {
+      "old models": "1.0-1.3",
+      "new models": "3.4-5.1"
+    },
+    "conclusion": "Most of the scale effect in section 4 was the baseline being undertrained on obstacle variety, not communication becoming decisive. Communication still helps by +0.145 at 100 robots, about a third of what was implied."
   }
 }

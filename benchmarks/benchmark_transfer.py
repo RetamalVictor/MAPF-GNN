@@ -169,16 +169,19 @@ def main():
     print(f"\nTrained on {trained_on} agents, board {args.board}x{args.board}, "
           f"{args.obstacles} obstacles, {args.episodes} episodes per point\n")
 
-    header = f"{'agents':<9}{'board':<8}{'neigh':<9}" + "".join(f"{name:<22}" for name in results)
+    # Neighbour counts are per model, not global: two models can disagree about
+    # the sensing range and the neighbour cap, and printing one model's graph
+    # density across the whole table reads as though they shared it.
+    header = f"{'agents':<9}{'board':<8}" + "".join(f"{name:<28}" for name in results)
     print(header)
-    print(f"{'':<9}{'':<8}{'':<9}" + "".join(f"{'complete':<11}{'at goal':<11}" for _ in results))
+    print(f"{'':<9}{'':<8}" + "".join(f"{'complete':<10}{'at goal':<10}{'neigh':<8}" for _ in results))
     print("-" * len(header))
     for agents in args.agents:
         first = next(iter(results))
-        row = f"{agents:<9}{results[first][agents]['board']:<8}{results[first][agents]['neighbours']:<9.2f}"
+        row = f"{agents:<9}{results[first][agents]['board']:<8}"
         for name in results:
             r = results[name][agents]
-            row += f"{r['complete']:<11.3f}{r['at_goal']:<11.3f}"
+            row += f"{r['complete']:<10.3f}{r['at_goal']:<10.3f}{r['neighbours']:<8.2f}"
         print(row)
 
     if args.save:

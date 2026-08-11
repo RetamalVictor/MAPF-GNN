@@ -285,13 +285,23 @@ def main():
         }
         print(f"{key:7s} {arch:9s} {total:>7,} floats  {binary.stat().st_size/1024:6.1f} KB")
 
-        candidate = (config["sensing_range"], config["map_shape"])
+        # Both panels run in the same world - only the policy differs - so the
+        # graph settings have to match. A baseline ignores the graph, but the
+        # environment still builds one for the communicating model beside it.
+        candidate = (
+            config["sensing_range"],
+            tuple(config["map_shape"]),
+            config.get("max_neighbours", 4) or 0,
+        )
         if shared is None:
             shared = candidate
         elif shared != candidate:
-            raise SystemExit("the two models disagree on sensing range or FOV shape")
+            raise SystemExit(
+                f"models disagree about the world: {shared} vs {candidate} "
+                "(sensing range, FOV shape, neighbour cap)"
+            )
 
-    sensing_range, map_shape = shared
+    sensing_range, map_shape, max_neighbours = shared
     manifest = {
         "note": (
             "Weights for the MAPF-GNN browser demo. float32, little-endian, "
@@ -302,7 +312,10 @@ def main():
         "fov": map_shape,
         "pad": 3,
         "sensing_range": sensing_range,
-        "max_neighbours": 4,
+        # 0 means uncapped: aggregate over every robot in range. Capping it also
+        # makes a wider sensing range pointless, since it swaps near neighbours
+        # for far ones rather than adding any.
+        "max_neighbours": max_neighbours,
         "actions": {
             "names": ["idle", "right", "up", "left", "down"],
             "dx": list(ACTION_DX),

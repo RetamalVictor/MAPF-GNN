@@ -90,17 +90,28 @@ def test_env_settings_match_dataset(config_path):
     performance, and nothing in the pipeline warns about it.
     """
     config = load_config(config_path)
-    root_dir = config["train"]["root_dir"]
-    name = Path(root_dir).name
+    roots = config["train"]["root_dir"]
+    if isinstance(roots, (str, Path)):
+        roots = [roots]
 
-    parts = name.split("_")
-    if len(parts) != 3 or not all(p.isdigit() for p in parts):
-        pytest.skip(f"Dataset name {name!r} does not encode its settings")
+    encoded = []
+    for root in roots:
+        parts = Path(root).name.split("_")
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            encoded.append(tuple(int(p) for p in parts))
 
-    agents, obstacles, board = (int(p) for p in parts)
-    assert config["num_agents"] == agents, f"{config_path.name}: agents"
-    assert config["obstacles"] == obstacles, f"{config_path.name}: obstacles"
-    assert config["board_size"] == [board, board], f"{config_path.name}: board_size"
+    if not encoded:
+        pytest.skip("No dataset directory encodes its settings")
+
+    for agents, obstacles, board in encoded:
+        assert config["num_agents"] == agents, f"{config_path.name}: agents"
+        assert config["board_size"] == [board, board], f"{config_path.name}: board_size"
+
+    # The obstacle count is only pinned when a policy trains on a single
+    # density. A curriculum spans several by design, and then config["obstacles"]
+    # is just the setting for the evaluation episodes run during training.
+    if len(encoded) == 1:
+        assert config["obstacles"] == encoded[0][1], f"{config_path.name}: obstacles"
 
 
 def test_checkpoints_load_into_their_config():
