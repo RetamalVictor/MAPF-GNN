@@ -130,6 +130,28 @@ def load_network(config, arch):
     return Network(config)
 
 
+def trained_obstacle_range(config):
+    """The obstacle densities a model was actually trained on.
+
+    Read from the dataset directory names, which encode {agents}_{obstacles}_
+    {board}. Shipping this with the weights means the demo can say honestly
+    whether a slider position is inside the training distribution, instead of
+    carrying a hardcoded guess that goes stale the moment the curriculum
+    changes - which is exactly what happened.
+    """
+    roots = config.get("train", {}).get("root_dir", [])
+    if isinstance(roots, str):
+        roots = [roots]
+
+    fractions = []
+    for root in roots:
+        parts = Path(root).name.split("_")
+        if len(parts) == 3 and all(p.isdigit() for p in parts):
+            _, obstacles, board = (int(p) for p in parts)
+            fractions.append(obstacles / (board * board))
+    return [min(fractions), max(fractions)] if fractions else None
+
+
 def detect_arch(config, name):
     net_type = config.get("net_type", "baseline")
     if net_type == "baseline":
@@ -264,6 +286,7 @@ def main():
     }
 
     manifest_models, networks, shared = {}, {}, None
+    trained_obstacles = None
     for key, (config_path, checkpoint_path) in sources.items():
         config = yaml.safe_load(Path(config_path).read_text())
         arch = detect_arch(config, key)
@@ -297,6 +320,7 @@ def main():
         # Both panels run in the same world - only the policy differs - so the
         # graph settings have to match. A baseline ignores the graph, but the
         # environment still builds one for the communicating model beside it.
+        trained_obstacles = trained_obstacle_range(config) or trained_obstacles
         candidate = (
             config["sensing_range"],
             tuple(config["map_shape"]),
@@ -343,6 +367,8 @@ def main():
             "agents": 100,
             "board": 63,
             "obstacle_fraction": 0.02,
+            # What the slider can claim is "as trained".
+            "trained_obstacles": trained_obstacles,
         },
         "models": manifest_models,
     }
